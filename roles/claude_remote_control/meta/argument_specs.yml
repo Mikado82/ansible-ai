@@ -45,6 +45,12 @@ argument_specs:
         type: bool
         default: true
         description: Start the service as soon as a login exists.
+      claude_rc_log_stdout:
+        type: bool
+        default: false
+        description: >-
+          Send the server's stdout (a status screen redrawn about once per second)
+          to the journal. stderr is always logged.
       claude_rc_resume_sessions:
         type: bool
         default: true

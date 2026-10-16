@@ -31,6 +31,12 @@ claude_rc_extra_args: ""
 # Start the service as soon as a login exists
 claude_rc_start: true
 
+# Send the server's stdout to the journal. Without a TTY, "claude remote-control"
+# redraws its status screen about once per second, which floods the journal with
+# hundreds of thousands of lines per day. Off by default; stderr is always logged.
+# The sessions are listed at claude.ai/code and in the Claude app anyway.
+claude_rc_log_stdout: false
+
 # Automatically resume the previous remote sessions after a restart (service or
 # server). On startup, "claude remote-control" brings back every session the
 # last server in this directory was serving, provided it was stopped cleanly via

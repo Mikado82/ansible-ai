@@ -69,10 +69,12 @@
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ claude_rc_uid }}"
 
-- name: Show where to find the connection URL
+- name: Show where to find the sessions and logs
   ansible.builtin.debug:
     msg: >-
-      Service uses {{ claude_rc_binary }}. Logs and connection URL:
+      Service uses {{ claude_rc_binary }}. The sessions appear at
+      https://claude.ai/code and in the Claude app. Logs
+      ({{ 'stdout and stderr' if claude_rc_log_stdout else 'stderr only' }}):
       ssh {{ _claude_rc_user }}@{{ inventory_hostname }}
       'journalctl --user -u {{ claude_rc_service_name }} -f'
   when: claude_rc_creds.stat.exists

@@ -39,12 +39,18 @@ The former single-user variable `claude_rc_user` is no longer supported; the
 role fails if it is still set.
 
 On the first run, log in once manually as each user (`ssh` → `claude` → `/login`), trust
-the project directory (see below), then run the role again. Logs and the
-connection URL:
+the project directory (see below), then run the role again. The sessions then
+appear at [claude.ai/code](https://claude.ai/code) and in the Claude app. Logs:
 
 ```bash
 journalctl --user -u claude-rc -f
 ```
+
+By default only stderr reaches the journal. Without a TTY, `claude remote-control`
+redraws its status screen (URL, capacity, session name) about once per second,
+which would add hundreds of thousands of lines per day and push other logs out
+of the journal. Set `claude_rc_log_stdout: true` to log it anyway, e.g. briefly
+for debugging.
 
 ## Variables
 
@@ -59,6 +65,7 @@ journalctl --user -u claude-rc -f
 | `claude_rc_manage_path` | `true` | Add the binary's directory to the login shell's PATH |
 | `claude_rc_extra_args` | `""` | Additional arguments for `claude remote-control` |
 | `claude_rc_start` | `true` | Start the service once logged in |
+| `claude_rc_log_stdout` | `false` | Send stdout (status screen, redrawn every second) to the journal; stderr is always logged |
 | `claude_rc_resume_sessions` | `true` | Automatically resume sessions after a restart |
 | `claude_rc_stop_timeout` | `30` | Seconds systemd waits when stopping the service |
 

@@ -51,6 +51,10 @@ server, so it keeps running after SSH logout and across reboots.
   `--no-create-session-in-dir`, `--continue`/`-c` and `--session-id` in
   `claude_rc_extra_args`. When false, the unit adds `--no-create-session-in-dir`
   (sessions archived on stop).
+- **stdout is discarded by default (`claude_rc_log_stdout: false`):** without a
+  TTY the server redraws its status screen about once per second, flooding the
+  journal. The unit sets `StandardOutput=null`; stderr still goes to the journal.
+  There is no quiet flag for `claude remote-control`.
 - **Login and trust can't be automated:** the role only enables (doesn't start)
   the service until `~/.claude/.credentials.json` exists, and prints how to log in
   and trust the project dir once interactively. The home directory is rejected as

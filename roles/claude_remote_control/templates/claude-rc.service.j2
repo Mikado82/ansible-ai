@@ -20,6 +20,11 @@ Environment=PATH={{ claude_rc_binary_dir }}:/usr/local/bin:/usr/bin:/bin
 ExecStart={{ claude_rc_binary }} {{ rc_args | join(' ') }}
 Restart=on-failure
 RestartSec=10
+{% if not claude_rc_log_stdout %}
+# Without a TTY the server redraws its status screen about once per second,
+# which would flood the journal. Errors go to stderr and are still logged.
+StandardOutput=null
+{% endif %}
 {% if claude_rc_resume_sessions %}
 
 # Resume sessions: stop the server like Ctrl+C (SIGINT) so Claude Code does
