@@ -5,5 +5,6 @@
   roles:
     - role: claude_remote_control
       vars:
-        claude_rc_user: deploy
-        claude_rc_project_dir: /home/deploy/claude-code-rc
+        claude_rc_users:
+          - deploy
+        claude_rc_project_dir: claude-code-rc

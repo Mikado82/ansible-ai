@@ -1,9 +1,12 @@
 # Role `claude_remote_control`
 
 Sets up Claude Code "Remote Control" as a systemd user service that runs
-independently of SSH logins and survives reboots.
+independently of SSH logins and survives reboots. Every user in
+`claude_rc_users` gets their own installation, project directory and service.
 
 ## What it does
+
+For each user in `claude_rc_users`:
 
 1. Installs Claude Code (native installer) if it is not present yet.
 2. Detects the actual path of the `claude` binary and writes it into the
@@ -22,16 +25,20 @@ ansible-playbook -i inventory.ini playbooks/claude-remote-control.yml
 
 Run it from the repository root, so `ansible.cfg` points Ansible at `roles/`.
 
-`claude_rc_user` is mandatory and has no default. The role fails early if it
-is missing or empty (via `meta/argument_specs.yml` and an explicit check) or
-if the user does not exist on the host. Set it in the playbook, in inventory
-vars, or on the command line:
+`claude_rc_users` is mandatory and has no default. The role fails early if it
+is missing, empty, contains empty or duplicate entries (via
+`meta/argument_specs.yml` and an explicit check) or if one of the users does
+not exist on the host. Set it in the playbook, in inventory vars, or on the
+command line:
 
 ```bash
-ansible-playbook -i inventory.ini playbooks/claude-remote-control.yml -e claude_rc_user=deploy
+ansible-playbook -i inventory.ini playbooks/claude-remote-control.yml -e '{"claude_rc_users": ["deploy", "alice"]}'
 ```
 
-On the first run, log in once manually (`ssh` → `claude` → `/login`), trust
+The former single-user variable `claude_rc_user` is no longer supported; the
+role fails if it is still set.
+
+On the first run, log in once manually as each user (`ssh` → `claude` → `/login`), trust
 the project directory (see below), then run the role again. Logs and the
 connection URL:
 
@@ -43,8 +50,8 @@ journalctl --user -u claude-rc -f
 
 | Variable | Default | Description |
 |---|---|---|
-| `claude_rc_user` | **mandatory, no default** | User that runs Claude Code and the service (must exist on the host) |
-| `claude_rc_project_dir` | `""` (= `~/claude-code-rc` of `claude_rc_user`) | Working directory |
+| `claude_rc_users` | **mandatory, no default** | List of users that each run Claude Code and their own service (must exist on the host) |
+| `claude_rc_project_dir` | `claude-code-rc` | Working directory, always relative to each user's home directory (a leading `~/` is accepted; absolute paths are rejected) |
 | `claude_rc_service_name` | `claude-rc` | Name of the unit |
 | `claude_rc_install` | `true` | Install Claude Code if missing |
 | `claude_rc_binary_path` | `""` | Fixed path to the binary (empty = detect automatically) |

@@ -1,16 +1,9 @@
 ---
-- name: Install required packages
-  ansible.builtin.package:
-    name:
-      - curl
-      - git
-    state: present
-
 - name: Create project directory
   ansible.builtin.file:
     path: "{{ _claude_rc_project_dir }}"
     state: directory
-    owner: "{{ claude_rc_user }}"
+    owner: "{{ _claude_rc_user }}"
     mode: "0755"
 
 - name: Check whether Claude Code already exists in a known location
@@ -24,7 +17,7 @@
   args:
     executable: /bin/bash
   become: true
-  become_user: "{{ claude_rc_user }}"
+  become_user: "{{ _claude_rc_user }}"
   changed_when: true
   when:
     - claude_rc_install

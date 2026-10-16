@@ -1,9 +1,10 @@
 ---
-# claude_rc_user is mandatory and has no default (see meta/argument_specs.yml)
+# claude_rc_users (list of users) is mandatory and has no default (see meta/argument_specs.yml)
 
-# Working directory of the Remote Control session.
-# Empty = "claude-code-rc" subdirectory of the user's actual home directory.
-claude_rc_project_dir: ""
+# Working directory of the Remote Control session, always relative to each
+# user's actual home directory (a leading "~/" is accepted). Absolute paths and
+# the home directory itself are rejected.
+claude_rc_project_dir: claude-code-rc
 
 # Name of the systemd user unit (without .service)
 claude_rc_service_name: claude-rc

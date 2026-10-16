@@ -31,7 +31,7 @@
 - name: Read PATH of the user's login shell
   ansible.builtin.command: bash -lc 'printf %s "$PATH"'
   become: true
-  become_user: "{{ claude_rc_user }}"
+  become_user: "{{ _claude_rc_user }}"
   register: claude_rc_login_path
   changed_when: false
   when: claude_rc_manage_path
@@ -46,7 +46,7 @@
   ansible.builtin.blockinfile:
     path: "{{ claude_rc_home }}/{{ '.bash_profile' if claude_rc_bash_profile.stat.exists else '.profile' }}"
     create: true
-    owner: "{{ claude_rc_user }}"
+    owner: "{{ _claude_rc_user }}"
     mode: "0644"
     marker: "# {mark} ANSIBLE MANAGED: claude_remote_control PATH"
     block: |
