@@ -1,0 +1,52 @@
+---
+# Role argument validation (Ansible >= 2.11). Runs automatically before the
+# role's tasks and fails early if a mandatory variable is missing or a value
+# has the wrong type.
+argument_specs:
+  main:
+    short_description: Set up Claude Code Remote Control as a systemd user service
+    options:
+      claude_rc_user:
+        type: str
+        required: true
+        description: User that runs Claude Code and the service. Mandatory, no default.
+      claude_rc_project_dir:
+        type: str
+        default: ""
+        description: Working directory of the Remote Control session. Empty means ~/claude-code-rc of claude_rc_user.
+      claude_rc_service_name:
+        type: str
+        default: claude-rc
+        description: Name of the systemd user unit (without .service).
+      claude_rc_install:
+        type: bool
+        default: true
+        description: Install Claude Code via the official installer if it is missing.
+      claude_rc_binary_path:
+        type: str
+        default: ""
+        description: Fixed path to the claude binary. Empty means detect automatically.
+      claude_rc_binary_candidates:
+        type: list
+        elements: str
+        description: Locations searched for the binary ("~" = the user's home directory).
+      claude_rc_manage_path:
+        type: bool
+        default: true
+        description: Add the binary's directory to PATH in the user's login shell if missing.
+      claude_rc_extra_args:
+        type: str
+        default: ""
+        description: Additional arguments for "claude remote-control".
+      claude_rc_start:
+        type: bool
+        default: true
+        description: Start the service as soon as a login exists.
+      claude_rc_resume_sessions:
+        type: bool
+        default: true
+        description: Automatically resume the previous remote sessions after a restart.
+      claude_rc_stop_timeout:
+        type: int
+        default: 30
+        description: Seconds systemd waits for a clean shutdown when stopping the service.

@@ -1,0 +1,9 @@
+---
+- name: Set up Claude Code Remote Control
+  hosts: all
+  become: true
+  roles:
+    - role: claude_remote_control
+      vars:
+        claude_rc_user: deploy
+        claude_rc_project_dir: /home/deploy/claude-code-rc

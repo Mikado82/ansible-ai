@@ -1,0 +1,42 @@
+---
+- name: Ensure the mandatory variable claude_rc_user is set
+  ansible.builtin.assert:
+    that:
+      - claude_rc_user is defined
+      - claude_rc_user is string
+      - claude_rc_user | trim | length > 0
+    fail_msg: >-
+      claude_rc_user is mandatory and has no default. Set it to the user that
+      should run Claude Code and the service, e.g. -e claude_rc_user=deploy.
+    quiet: true
+
+- name: Look up user account
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ claude_rc_user }}"
+    fail_key: false
+
+- name: Fail if the user does not exist on the host
+  ansible.builtin.fail:
+    msg: >-
+      User "{{ claude_rc_user }}" does not exist on {{ inventory_hostname }}.
+      Create it first or set claude_rc_user to an existing user.
+  when: (ansible_facts.getent_passwd | default({})).get(claude_rc_user) is none
+
+- name: Store UID and home directory
+  ansible.builtin.set_fact:
+    claude_rc_uid: "{{ ansible_facts.getent_passwd[claude_rc_user][1] }}"
+    claude_rc_home: "{{ ansible_facts.getent_passwd[claude_rc_user][4] }}"
+
+- name: Determine the effective project directory
+  ansible.builtin.set_fact:
+    _claude_rc_project_dir: "{{ claude_rc_project_dir if (claude_rc_project_dir | trim) else (claude_rc_home ~ '/claude-code-rc') }}"
+
+- name: Install Claude Code
+  ansible.builtin.import_tasks: install.yml
+
+- name: Locate the claude binary and check PATH
+  ansible.builtin.import_tasks: path.yml
+
+- name: Set up the systemd user service
+  ansible.builtin.import_tasks: service.yml

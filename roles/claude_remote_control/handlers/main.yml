@@ -1,0 +1,12 @@
+---
+- name: Restart Claude Remote Control
+  ansible.builtin.systemd_service:
+    name: "{{ claude_rc_service_name }}"
+    scope: user
+    daemon_reload: true
+    state: restarted
+  become: true
+  become_user: "{{ claude_rc_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ claude_rc_uid }}"
+  when: claude_rc_start and claude_rc_creds.stat.exists

@@ -1,0 +1,34 @@
+{% set rc_args = ['remote-control'] %}
+{% if not claude_rc_resume_sessions %}
+{%   set _ = rc_args.append('--no-create-session-in-dir') %}
+{% endif %}
+{% if claude_rc_extra_args %}
+{%   set _ = rc_args.append(claude_rc_extra_args) %}
+{% endif %}
+# {{ ansible_managed }}
+[Unit]
+Description=Claude Code Remote Control
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory={{ _claude_rc_project_dir }}
+# Absolute path, so the service does not depend on PATH.
+# The directory is also added to PATH in case Claude Code invokes helper
+# programs or itself via PATH.
+Environment=PATH={{ claude_rc_binary_dir }}:/usr/local/bin:/usr/bin:/bin
+ExecStart={{ claude_rc_binary }} {{ rc_args | join(' ') }}
+Restart=on-failure
+RestartSec=10
+{% if claude_rc_resume_sessions %}
+
+# Resume sessions: stop the server like Ctrl+C (SIGINT) so Claude Code does
+# not archive its sessions. The next start of "claude remote-control" in the
+# same directory brings them back.
+KillSignal=SIGINT
+KillMode=mixed
+TimeoutStopSec={{ claude_rc_stop_timeout }}
+{% endif %}
+
+[Install]
+WantedBy=default.target

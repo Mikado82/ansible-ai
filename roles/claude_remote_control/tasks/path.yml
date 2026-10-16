@@ -1,0 +1,59 @@
+---
+# 1) Determine the actual path of the binary. It is written as an absolute path
+#    into the systemd unit, so the service does not depend on PATH.
+
+- name: Check candidate locations of the claude binary
+  ansible.builtin.stat:
+    path: "{{ item | regex_replace('^~', claude_rc_home) }}"
+  loop: "{{ ([claude_rc_binary_path] if claude_rc_binary_path else []) + claude_rc_binary_candidates }}"
+  register: claude_rc_binary_stat
+
+- name: Fail if no claude binary was found
+  ansible.builtin.fail:
+    msg: >-
+      No claude binary found. Searched:
+      {{ claude_rc_binary_stat.results | map(attribute='stat.path', default='?') | list | join(', ') }}.
+      Set claude_rc_install=true or set claude_rc_binary_path to the correct path.
+  when: claude_rc_binary_stat.results | selectattr('stat.exists') | list | length == 0
+
+- name: Store the detected path
+  ansible.builtin.set_fact:
+    claude_rc_binary: "{{ (claude_rc_binary_stat.results | selectattr('stat.exists') | first).item
+                          | regex_replace('^~', claude_rc_home) }}"
+
+- name: Store the binary's directory
+  ansible.builtin.set_fact:
+    claude_rc_binary_dir: "{{ claude_rc_binary | dirname }}"
+
+# 2) For interactive SSH logins, check whether the directory is in PATH and
+#    add it to the login shell's profile file if necessary.
+
+- name: Read PATH of the user's login shell
+  ansible.builtin.command: bash -lc 'printf %s "$PATH"'
+  become: true
+  become_user: "{{ claude_rc_user }}"
+  register: claude_rc_login_path
+  changed_when: false
+  when: claude_rc_manage_path
+
+- name: Check whether ~/.bash_profile exists (read instead of ~/.profile if present)
+  ansible.builtin.stat:
+    path: "{{ claude_rc_home }}/.bash_profile"
+  register: claude_rc_bash_profile
+  when: claude_rc_manage_path
+
+- name: Add the binary's directory to the login shell's PATH
+  ansible.builtin.blockinfile:
+    path: "{{ claude_rc_home }}/{{ '.bash_profile' if claude_rc_bash_profile.stat.exists else '.profile' }}"
+    create: true
+    owner: "{{ claude_rc_user }}"
+    mode: "0644"
+    marker: "# {mark} ANSIBLE MANAGED: claude_remote_control PATH"
+    block: |
+      case ":$PATH:" in
+        *":{{ claude_rc_binary_dir }}:"*) ;;
+        *) PATH="{{ claude_rc_binary_dir }}:$PATH"; export PATH ;;
+      esac
+  when:
+    - claude_rc_manage_path
+    - claude_rc_binary_dir not in claude_rc_login_path.stdout.split(':')

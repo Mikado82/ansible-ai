@@ -1,0 +1,31 @@
+---
+- name: Install required packages
+  ansible.builtin.package:
+    name:
+      - curl
+      - git
+    state: present
+
+- name: Create project directory
+  ansible.builtin.file:
+    path: "{{ _claude_rc_project_dir }}"
+    state: directory
+    owner: "{{ claude_rc_user }}"
+    mode: "0755"
+
+- name: Check whether Claude Code already exists in a known location
+  ansible.builtin.stat:
+    path: "{{ item | regex_replace('^~', claude_rc_home) }}"
+  loop: "{{ ([claude_rc_binary_path] if claude_rc_binary_path else []) + claude_rc_binary_candidates }}"
+  register: claude_rc_preinstall_stat
+
+- name: Install Claude Code (native installer, installs to ~/.local/bin)
+  ansible.builtin.shell: set -o pipefail && curl -fsSL https://claude.ai/install.sh | bash
+  args:
+    executable: /bin/bash
+  become: true
+  become_user: "{{ claude_rc_user }}"
+  changed_when: true
+  when:
+    - claude_rc_install
+    - claude_rc_preinstall_stat.results | selectattr('stat.exists') | list | length == 0

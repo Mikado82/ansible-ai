@@ -1,0 +1,41 @@
+---
+# claude_rc_user is mandatory and has no default (see meta/argument_specs.yml)
+
+# Working directory of the Remote Control session.
+# Empty = "claude-code-rc" subdirectory of the user's actual home directory.
+claude_rc_project_dir: ""
+
+# Name of the systemd user unit (without .service)
+claude_rc_service_name: claude-rc
+
+# Install Claude Code via the official installer if it is missing
+claude_rc_install: true
+
+# Fixed path to the claude binary. Leave empty to detect it automatically.
+claude_rc_binary_path: ""
+
+# Locations searched for the binary ("~" = the user's home directory)
+claude_rc_binary_candidates:
+  - "~/.local/bin/claude"
+  - "/usr/local/bin/claude"
+  - "/usr/bin/claude"
+
+# Add the binary's directory to PATH in the user's login shell if it is missing
+# (affects interactive SSH logins only, not the service)
+claude_rc_manage_path: true
+
+# Additional arguments for "claude remote-control"
+claude_rc_extra_args: ""
+
+# Start the service as soon as a login exists
+claude_rc_start: true
+
+# Automatically resume the previous remote sessions after a restart (service or
+# server). On startup, "claude remote-control" brings back every session the
+# last server in this directory was serving, provided it was stopped cleanly via
+# SIGINT (like Ctrl+C) and was offline for no more than about 4 hours. When this
+# option is off, sessions are archived when the service stops.
+claude_rc_resume_sessions: true
+
+# How long systemd waits for a clean shutdown when stopping the service
+claude_rc_stop_timeout: 30

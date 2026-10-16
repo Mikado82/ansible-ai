@@ -1,0 +1,84 @@
+---
+- name: Validate settings for resuming sessions
+  ansible.builtin.assert:
+    that:
+      - "'--no-create-session-in-dir' not in claude_rc_extra_args"
+      - "'--continue' not in claude_rc_extra_args and '-c' not in claude_rc_extra_args.split()"
+      - "'--session-id' not in claude_rc_extra_args"
+    fail_msg: >-
+      claude_rc_resume_sessions is enabled, but claude_rc_extra_args contains
+      an option that prevents resuming all sessions (--no-create-session-in-dir)
+      or makes the server exit after a single session (--continue /
+      --session-id). Please remove it from claude_rc_extra_args.
+    quiet: true
+  when: claude_rc_resume_sessions
+
+- name: Ensure the project directory is not the home directory
+  ansible.builtin.assert:
+    that:
+      - (_claude_rc_project_dir | regex_replace('/+$', '')) != (claude_rc_home | regex_replace('/+$', ''))
+    fail_msg: >-
+      Claude Code never saves workspace trust for the home directory, so the
+      service would fail with "Workspace not trusted" on every start. Please
+      choose a subdirectory as claude_rc_project_dir.
+    quiet: true
+
+- name: Enable linger (user services keep running without a login)
+  ansible.builtin.command: loginctl enable-linger {{ claude_rc_user }}
+  args:
+    creates: "/var/lib/systemd/linger/{{ claude_rc_user }}"
+
+- name: Wait for the user runtime to be ready
+  ansible.builtin.wait_for:
+    path: "/run/user/{{ claude_rc_uid }}/bus"
+    timeout: 30
+
+- name: Create directory for user units
+  ansible.builtin.file:
+    path: "{{ claude_rc_home }}/.config/systemd/user"
+    state: directory
+    owner: "{{ claude_rc_user }}"
+    mode: "0755"
+
+- name: Write service unit
+  ansible.builtin.template:
+    src: claude-rc.service.j2
+    dest: "{{ claude_rc_home }}/.config/systemd/user/{{ claude_rc_service_name }}.service"
+    owner: "{{ claude_rc_user }}"
+    mode: "0644"
+  notify: Restart Claude Remote Control
+
+- name: Check whether Claude Code is logged in
+  ansible.builtin.stat:
+    path: "{{ claude_rc_home }}/.claude/.credentials.json"
+  register: claude_rc_creds
+
+- name: Notice if no login exists yet
+  ansible.builtin.debug:
+    msg: >-
+      Claude Code is not logged in yet for {{ claude_rc_user }}. Log in once
+      via SSH: run "claude" and then "/login". Afterwards, run
+      "claude remote-control" once in {{ _claude_rc_project_dir }}, answer the
+      "Trust ...? [y/N]" prompt with y and stop it with Ctrl+C. Then run this
+      role again. Until then, the service is only enabled, not started.
+  when: not claude_rc_creds.stat.exists
+
+- name: Enable the service (and start it if logged in)
+  ansible.builtin.systemd_service:
+    name: "{{ claude_rc_service_name }}"
+    scope: user
+    daemon_reload: true
+    enabled: true
+    state: "{{ 'started' if (claude_rc_start and claude_rc_creds.stat.exists) else omit }}"
+  become: true
+  become_user: "{{ claude_rc_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ claude_rc_uid }}"
+
+- name: Show where to find the connection URL
+  ansible.builtin.debug:
+    msg: >-
+      Service uses {{ claude_rc_binary }}. Logs and connection URL:
+      ssh {{ claude_rc_user }}@{{ inventory_hostname }}
+      'journalctl --user -u {{ claude_rc_service_name }} -f'
+  when: claude_rc_creds.stat.exists
