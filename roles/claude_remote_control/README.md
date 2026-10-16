@@ -17,16 +17,18 @@ independently of SSH logins and survives reboots.
 ## Usage
 
 ```bash
-ansible-playbook -i inventory.ini claude-remote-control.yml
+ansible-playbook -i inventory.ini playbooks/claude-remote-control.yml
 ```
+
+Run it from the repository root, so `ansible.cfg` points Ansible at `roles/`.
 
 `claude_rc_user` is mandatory and has no default. The role fails early if it
 is missing or empty (via `meta/argument_specs.yml` and an explicit check) or
-if the user does not exist on the host. Set it in `site.yml`, in inventory
+if the user does not exist on the host. Set it in the playbook, in inventory
 vars, or on the command line:
 
 ```bash
-ansible-playbook -i inventory.ini claude-remote-control.yml -e claude_rc_user=deploy
+ansible-playbook -i inventory.ini playbooks/claude-remote-control.yml -e claude_rc_user=deploy
 ```
 
 On the first run, log in once manually (`ssh` → `claude` → `/login`), trust

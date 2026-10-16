@@ -9,7 +9,7 @@ An Ansible role, `claude_remote_control`, that runs Claude Code Remote Control
 (`claude remote-control`, server mode) as a **systemd user service** on a
 server, so it keeps running after SSH logout and across reboots.
 
-- `claude-remote-control.yml` (repo root) – example playbook
+- `playbooks/claude-remote-control.yml` – example playbook (run from repo root; `ansible.cfg` sets `roles_path`)
 - `roles/claude_remote_control/` (this directory)
   - `defaults/main.yml` – defaults (all variables prefixed `claude_rc_`)
   - `meta/argument_specs.yml` – role argument validation (types, required vars)
@@ -59,5 +59,5 @@ server, so it keeps running after SSH logout and across reboots.
 ## Status / next steps
 
 - Only YAML validity and unit-template rendering were checked. **No real
-  Ansible run yet**: run `ansible-playbook claude-remote-control.yml --syntax-check` and
+  Ansible run yet**: run `ansible-playbook playbooks/claude-remote-control.yml --syntax-check` and
   `ansible-lint`, then test against a VM.

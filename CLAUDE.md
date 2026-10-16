@@ -4,8 +4,10 @@ Collection of Ansible roles and playbooks created with AI.
 
 ## Conventions
 
-- One role per directory under `roles/`, with an example playbook in the repo root
-  named after the role (e.g. `claude-remote-control.yml`).
+- One role per directory under `roles/`, with an example playbook in `playbooks/`
+  named after the role (e.g. `playbooks/claude-remote-control.yml`).
+- `ansible.cfg` in the repo root sets `roles_path = ./roles`; run
+  `ansible-playbook` from the repo root.
 - Everything in English: comments, task names, messages, READMEs.
 - Variables are prefixed with the role's short name (e.g. `claude_rc_`).
 - Mandatory variables have no default and are enforced via `meta/argument_specs.yml`.
