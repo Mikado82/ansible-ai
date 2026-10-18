@@ -81,11 +81,18 @@ with the HACS integration "Template Media Player".
 - **Auto power on is an automation in the package** (packages may contain
   `automation:`; only the UI editor can't edit it). Triggers: webhook sensor
   `to: playing` (immediate) and Spotify `source` `to: spotify_device_name`
-  (polled fallback); condition switch is off; action `switch.turn_on`. It sits
-  last in the file so the anchors are defined. Known effect: if the device is
-  switched off with its own remote while the Pi keeps playing, the next
-  `playing` event switches it on again. Turning off via the media player pauses
-  Spotify first, so that path does not re-trigger. A trigger-based template
+  (polled fallback); condition switch is off; action `switch.turn_on`.
+- **Auto pause is a second automation** (switch `from: on` `to: off`,
+  conditions `*spotify_on_this_device` and Spotify state `playing`, action
+  `media_pause`). It replaces the pause that used to be inside the media
+  player's `turn_off` (which now only switches off), so pausing lives in one
+  place and also covers switching off via the switch or the device's own remote.
+  It also prevents auto power on from switching the device on again with the
+  next `playing` event. Limitation: within ~30 s after switching to the Pi the
+  polled `source` may not match yet, so nothing is paused. Spotify has no
+  "stop", only pause. The anchor `&spotify_on_this_device` is now defined in
+  `media_play`. Both automations sit last in the file so the anchors are
+  defined. A trigger-based template
   sensor's `actions:` was rejected as a workaround: it is meant for fetching
   data, not for switching devices.
 - **raspotify install is opt-in** (`raspotify_ha_hook_install_raspotify`),

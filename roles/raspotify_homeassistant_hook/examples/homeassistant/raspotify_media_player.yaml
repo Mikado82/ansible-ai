@@ -41,10 +41,15 @@
 #     a missed webhook event can never pause another device. The Spotify
 #     integration polls, so `source` may lag up to ~30 s after switching devices.
 #
-# Auto power on (automation at the end of this file, remove it if not wanted):
-# switches the device on as soon as Spotify plays on the Pi. Triggered by the
-# webhook sensor changing to "playing" (immediate) and, as a fallback, by the
-# Spotify integration reporting this device as source (polled, slower).
+# Automations at the end of this file (remove what you do not want):
+#   - Auto power on: switches the device on as soon as Spotify plays on the Pi.
+#     Triggered by the webhook sensor changing to "playing" (immediate) and, as
+#     a fallback, by the Spotify integration reporting this device as source
+#     (polled, slower).
+#   - Auto pause: pauses Spotify when the device is switched off by any means
+#     (media player, switch, its own remote detected via power metering), but
+#     only if Spotify is playing on this device. The media player's turn_off
+#     relies on it; without it, switching off leaves Spotify playing.
 # ---------------------------------------------------------------------------
 
 media_player:
@@ -79,18 +84,8 @@ media_player:
             - action: switch.turn_on
               target: { entity_id: *power_switch }
           turn_off:
-            - if:
-                - &spotify_on_this_device
-                  condition: state
-                  entity_id: *spotify_player
-                  attribute: source
-                  state: *spotify_device_name
-                - condition: state
-                  entity_id: *spotify_player
-                  state: playing
-              then:
-                - action: media_player.media_pause
-                  target: { entity_id: *spotify_player }
+            # Playback is paused by the auto pause automation at the end of
+            # this file, which also covers switching off by other means.
             - action: switch.turn_off
               target: { entity_id: *power_switch }
           volume_up:
@@ -100,7 +95,11 @@ media_player:
             - action: button.press
               target: { entity_id: *volume_down_button }
           media_play:
-            - *spotify_on_this_device
+            - &spotify_on_this_device
+              condition: state
+              entity_id: *spotify_player
+              attribute: source
+              state: *spotify_device_name
             - action: media_player.media_play
               target: { entity_id: *spotify_player }
           media_pause:
@@ -157,9 +156,6 @@ template:
 
 automation:
   # Switch the device on as soon as Spotify plays on the Pi.
-  # Note: if the device is switched off manually (e.g. with its own remote)
-  # while Spotify keeps playing on the Pi, the next "playing" event (resume,
-  # seek) switches it on again. Remove this block if you do not want that.
   - id: my_stereo_auto_power_on
     alias: "My Stereo: power on when Spotify plays on it"
     mode: single
@@ -178,3 +174,25 @@ automation:
     actions:
       - action: switch.turn_on
         target: { entity_id: *power_switch }
+
+  # Pause Spotify when the device is switched off, so it does not keep
+  # playing into a switched-off device (and is not switched on again by the
+  # next "playing" event). Only acts if Spotify is playing on this device;
+  # the Spotify integration polls, so right after switching to the Pi
+  # (up to ~30 s) the source may not match yet and nothing is paused.
+  - id: my_stereo_auto_pause
+    alias: "My Stereo: pause Spotify when switched off"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: *power_switch
+        from: "on"
+        to: "off"
+    conditions:
+      - *spotify_on_this_device
+      - condition: state
+        entity_id: *spotify_player
+        state: playing
+    actions:
+      - action: media_player.media_pause
+        target: { entity_id: *spotify_player }
