@@ -22,6 +22,12 @@ argument_specs:
         type: str
         default: ""
         description: Name of the device in the Spotify app (LIBRESPOT_NAME). Empty keeps the current setting.
+      raspotify_ha_hook_service_events:
+        type: bool
+        default: true
+        description: >-
+          Send service_started/service_stopped when the raspotify service starts
+          or stops (systemd drop-in), so Home Assistant does not keep a stale state.
       raspotify_ha_hook_timeout:
         type: int
         default: 5

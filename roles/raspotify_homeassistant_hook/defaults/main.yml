@@ -6,6 +6,11 @@
 # Leave empty to keep the existing raspotify setting.
 raspotify_ha_hook_device_name: ""
 
+# Also send "service_started"/"service_stopped" when the raspotify service
+# starts or stops (boot, restart, crash, shutdown) via a systemd drop-in, so
+# Home Assistant does not keep a stale "playing" state.
+raspotify_ha_hook_service_events: true
+
 # Timeout in seconds for the HTTP request to Home Assistant
 raspotify_ha_hook_timeout: 5
 

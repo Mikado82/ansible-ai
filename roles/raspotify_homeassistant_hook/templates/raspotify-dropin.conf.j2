@@ -1,0 +1,7 @@
+# {{ ansible_managed }}
+# Tells Home Assistant that playback stopped whenever raspotify starts or stops
+# (restart, crash, shutdown, boot), because librespot itself sends no "stopped"
+# event in these cases and the Home Assistant sensor would keep its last state.
+[Service]
+ExecStartPost=-/usr/bin/env PLAYER_EVENT=service_started {{ raspotify_ha_hook_script_path }}
+ExecStopPost=-/usr/bin/env PLAYER_EVENT=service_stopped {{ raspotify_ha_hook_script_path }}

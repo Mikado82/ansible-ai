@@ -14,7 +14,13 @@ the same account.
 3. Installs a hook script that turns every librespot event into a JSON POST to
    `<raspotify_ha_hook_url>/api/webhook/<raspotify_ha_hook_webhook_id>`.
 4. Sets `LIBRESPOT_ONEVENT` (and optionally `LIBRESPOT_NAME`) in the raspotify
-   config and restarts raspotify when something changed.
+   config.
+5. Adds a systemd drop-in to `raspotify.service` that also sends
+   `service_started` / `service_stopped` when raspotify starts or stops (boot,
+   restart, crash, shutdown). librespot sends no `stopped` event in these cases,
+   so without it Home Assistant could keep showing a stale `playing` state.
+   Disable with `raspotify_ha_hook_service_events: false`.
+6. Restarts raspotify when something changed.
 
 ## Usage
 
@@ -34,7 +40,8 @@ have no default. The role fails early if they are missing (via
 |---|---|---|
 | `raspotify_ha_hook_url` | **mandatory, no default** | Home Assistant base URL as reachable from the Pi, e.g. `http://homeassistant.local:8123` |
 | `raspotify_ha_hook_webhook_id` | **mandatory, no default** | Webhook ID of the Home Assistant sensor (letters, digits, `_`, `-`) |
-| `raspotify_ha_hook_device_name` | `""` | Name in the Spotify app (`LIBRESPOT_NAME`); empty keeps the current setting |
+| `raspotify_ha_hook_device_name` | `""` | Name in the Spotify app (`LIBRESPOT_NAME`); empty keeps the current setting. Recommended, the Home Assistant example uses it to identify the active device |
+| `raspotify_ha_hook_service_events` | `true` | Send `service_started`/`service_stopped` on raspotify start/stop (systemd drop-in) |
 | `raspotify_ha_hook_timeout` | `5` | HTTP timeout in seconds |
 | `raspotify_ha_hook_conf_path` | `/etc/raspotify/conf` | raspotify config file |
 | `raspotify_ha_hook_script_path` | `/usr/local/bin/raspotify-ha-hook.sh` | Location of the hook script |
@@ -50,7 +57,12 @@ have no default. The role fails early if they are missing (via
 
 All other events only contain the event name, e.g. `{"event": "playing"}`.
 Relevant events: `playing`, `paused`, `stopped`, `track_changed`,
-`session_disconnected`.
+`session_disconnected`, and from the systemd drop-in `service_started` and
+`service_stopped`.
+
+Player events are sent once without retry, to keep their order. The service
+events are retried a few times, because they may fire at boot before the
+network is up.
 
 ## Home Assistant side
 
@@ -59,12 +71,20 @@ is a ready-to-use [package](https://www.home-assistant.io/docs/configuration/pac
 with two parts:
 
 - a **trigger-based template sensor** that receives the webhook, stores the
-  playback state and keeps the last track metadata between events
+  playback state and keeps the last track metadata between events. It is reset
+  to `stopped` on the service events and when the power switch turns off.
 - a **media player** built with the HACS integration
   [Template Media Player](https://github.com/EuleMitKeule/template-media-player)
   that combines the sensor with a power switch, volume buttons (e.g. IR via
-  ESPHome) and the Spotify integration for play/pause/next/previous. Playback
-  controls only act while this device is the active Spotify device.
+  ESPHome) and the Spotify integration for play/pause/next/previous.
+
+The display (state, title, cover) comes from the webhook sensor: fast, but it
+only knows the last event it received. Playback control is guarded by the
+Spotify integration instead: commands only act if its `source` attribute (the
+active device, reported by the Spotify cloud) equals the device name. A missed
+webhook event can therefore never pause or skip on another device. The Spotify
+integration polls, so `source` may lag up to about 30 seconds after switching
+devices; during that time the controls do nothing.
 
 Setup:
 
@@ -76,7 +96,8 @@ Setup:
    ```
 3. Copy the example to `/config/packages/` and replace the placeholders listed
    at the top of the file. The webhook ID must match
-   `raspotify_ha_hook_webhook_id`. Entity IDs of the media player are set once
+   `raspotify_ha_hook_webhook_id`, `spotify_device_name` must match
+   `raspotify_ha_hook_device_name`. Entity IDs of the media player are set once
    in its `variables` block and reused via YAML anchors.
 4. Check the configuration and restart Home Assistant.
 

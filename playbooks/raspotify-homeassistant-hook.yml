@@ -7,4 +7,6 @@
       vars:
         raspotify_ha_hook_url: http://homeassistant.local:8123
         raspotify_ha_hook_webhook_id: raspotify_my_stereo
-        # raspotify_ha_hook_device_name: My Stereo
+        # Name in the Spotify app; must match spotify_device_name in the
+        # Home Assistant example package
+        raspotify_ha_hook_device_name: My Stereo

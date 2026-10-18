@@ -2,12 +2,11 @@
 #
 # Creates a media player entity for an audio device (e.g. an old stereo) fed by a
 # Raspberry Pi running raspotify. Combines:
-#   - a switch           -> on/off state and power control (e.g. a template switch
-#                           using power metering + IR)
-#   - raspotify webhook  -> playback state + track metadata (title, artist, cover, ...)
-#   - two buttons        -> volume up/down (e.g. IR buttons from ESPHome)
-#   - Spotify integration-> play/pause/next/previous, only while the Pi is the
-#                           active Spotify device
+#   - a switch            -> on/off state and power control (e.g. a template switch
+#                            using power metering + IR)
+#   - raspotify webhook   -> playback state + track metadata (title, artist, cover, ...)
+#   - two buttons         -> volume up/down (e.g. IR buttons from ESPHome)
+#   - Spotify integration -> play/pause/next/previous
 #
 # Requires the HACS custom integration "Template Media Player":
 #   https://github.com/EuleMitKeule/template-media-player
@@ -15,47 +14,33 @@
 # ---------------------------------------------------------------------------
 # SETTINGS - adjust these placeholders:
 #
-#   raspotify_my_stereo                 webhook ID (must match raspotify_ha_hook_webhook_id)
-#   "Raspotify My Stereo"               sensor name -> entity sensor.raspotify_my_stereo
 #   my_stereo / "My Stereo"             media player ID and name -> media_player.my_stereo
-#   switch.my_stereo_power              power switch of the device
-#   button.my_stereo_volume_up          volume up button
-#   button.my_stereo_volume_down        volume down button
-#   media_player.spotify_my_account     entity of the Spotify integration
+#   variables block of the media player:
+#     switch.my_stereo_power            power switch of the device
+#     button.my_stereo_volume_up        volume up button
+#     button.my_stereo_volume_down      volume down button
+#     media_player.spotify_my_account   entity of the Spotify integration
+#     "My Stereo"                       spotify_device_name: name of the Pi in the
+#                                       Spotify app (raspotify_ha_hook_device_name)
+#     sensor.raspotify_my_stereo        entity of the webhook sensor below
+#   raspotify_my_stereo                 webhook ID (must match raspotify_ha_hook_webhook_id)
+#   "Raspotify My Stereo"               sensor name -> sensor.raspotify_my_stereo
 #
-# Entity IDs in the media player are set once in its `variables` block and reused
-# via YAML anchors, so only that block needs editing there.
+# Entity IDs are set once in the media player's `variables` block and reused via
+# YAML anchors (&name / *name). The media player therefore comes first in this
+# file: an anchor must be defined before it is used.
 # If your volume control is a script instead of a button, replace `button.press`
 # with `script.turn_on` in volume_up/volume_down.
+#
+# How "is the Pi playing?" is decided:
+#   - Display (state, title, cover): from the webhook sensor. Fast, but it only
+#     knows the last event it received. It is reset to "stopped" when the switch
+#     turns off and when raspotify starts or stops (service events of the role).
+#   - Playback control: only if the Spotify integration reports this device as
+#     the active one (attribute `source`). This comes from the Spotify cloud, so
+#     a missed webhook event can never pause another device. The Spotify
+#     integration polls, so `source` may lag up to ~30 s after switching devices.
 # ---------------------------------------------------------------------------
-
-template:
-  # Playback state + metadata pushed by the Pi (librespot --onevent hook)
-  - trigger:
-      - trigger: webhook
-        webhook_id: raspotify_my_stereo
-        allowed_methods: [POST]
-        local_only: true
-    sensor:
-      - name: "Raspotify My Stereo"
-        unique_id: raspotify_my_stereo
-        icon: mdi:spotify
-        state: >
-          {% set event = trigger.json.event %}
-          {% if event in ['playing', 'paused', 'stopped'] %}{{ event }}
-          {% elif event == 'session_disconnected' %}stopped
-          {% else %}{{ this.state }}{% endif %}
-        attributes:
-          title: >
-            {{ trigger.json.title if trigger.json.event == 'track_changed' else this.attributes.get('title') }}
-          artist: >
-            {{ trigger.json.artist if trigger.json.event == 'track_changed' else this.attributes.get('artist') }}
-          album: >
-            {{ trigger.json.album if trigger.json.event == 'track_changed' else this.attributes.get('album') }}
-          cover: >
-            {{ trigger.json.cover if trigger.json.event == 'track_changed' else this.attributes.get('cover') }}
-          duration: >
-            {{ (trigger.json.duration_ms / 1000) | int if trigger.json.event == 'track_changed' else this.attributes.get('duration') }}
 
 media_player:
   - platform: template_media_player
@@ -70,6 +55,7 @@ media_player:
           volume_up_button: &volume_up_button button.my_stereo_volume_up
           volume_down_button: &volume_down_button button.my_stereo_volume_down
           spotify_player: &spotify_player media_player.spotify_my_account
+          spotify_device_name: &spotify_device_name "My Stereo"
           raspotify_sensor: &raspotify_sensor sensor.raspotify_my_stereo
         global_template: >
           {% set is_on = is_state(power_switch, 'on') %}
@@ -89,8 +75,13 @@ media_player:
               target: { entity_id: *power_switch }
           turn_off:
             - if:
+                - &spotify_on_this_device
+                  condition: state
+                  entity_id: *spotify_player
+                  attribute: source
+                  state: *spotify_device_name
                 - condition: state
-                  entity_id: *raspotify_sensor
+                  entity_id: *spotify_player
                   state: playing
               then:
                 - action: media_player.media_pause
@@ -104,26 +95,57 @@ media_player:
             - action: button.press
               target: { entity_id: *volume_down_button }
           media_play:
-            - condition: state
-              entity_id: *raspotify_sensor
-              state: paused
+            - *spotify_on_this_device
             - action: media_player.media_play
               target: { entity_id: *spotify_player }
           media_pause:
-            - condition: state
-              entity_id: *raspotify_sensor
-              state: playing
+            - *spotify_on_this_device
             - action: media_player.media_pause
               target: { entity_id: *spotify_player }
           media_next_track:
-            - condition: state
-              entity_id: *raspotify_sensor
-              state: [playing, paused]
+            - *spotify_on_this_device
             - action: media_player.media_next_track
               target: { entity_id: *spotify_player }
           media_previous_track:
-            - condition: state
-              entity_id: *raspotify_sensor
-              state: [playing, paused]
+            - *spotify_on_this_device
             - action: media_player.media_previous_track
               target: { entity_id: *spotify_player }
+
+template:
+  # Playback state + metadata pushed by the Pi (librespot --onevent hook and
+  # raspotify service start/stop), reset when the device is switched off.
+  - trigger:
+      - trigger: webhook
+        id: webhook
+        webhook_id: raspotify_my_stereo
+        allowed_methods: [POST]
+        local_only: true
+      - trigger: state
+        id: power_off
+        entity_id: *power_switch
+        to: "off"
+    sensor:
+      - name: "Raspotify My Stereo"
+        unique_id: raspotify_my_stereo
+        icon: mdi:spotify
+        state: >
+          {% set event = trigger.json.event if trigger.id == 'webhook' else 'power_off' %}
+          {% if event in ['playing', 'paused', 'stopped'] %}{{ event }}
+          {% elif event in ['session_disconnected', 'service_started', 'service_stopped', 'power_off'] %}stopped
+          {% else %}{{ this.state }}{% endif %}
+        attributes:
+          title: >
+            {% set track = trigger.id == 'webhook' and trigger.json.event == 'track_changed' %}
+            {{ trigger.json.title if track else this.attributes.get('title') }}
+          artist: >
+            {% set track = trigger.id == 'webhook' and trigger.json.event == 'track_changed' %}
+            {{ trigger.json.artist if track else this.attributes.get('artist') }}
+          album: >
+            {% set track = trigger.id == 'webhook' and trigger.json.event == 'track_changed' %}
+            {{ trigger.json.album if track else this.attributes.get('album') }}
+          cover: >
+            {% set track = trigger.id == 'webhook' and trigger.json.event == 'track_changed' %}
+            {{ trigger.json.cover if track else this.attributes.get('cover') }}
+          duration: >
+            {% set track = trigger.id == 'webhook' and trigger.json.event == 'track_changed' %}
+            {{ (trigger.json.duration_ms / 1000) | int if track else this.attributes.get('duration') }}

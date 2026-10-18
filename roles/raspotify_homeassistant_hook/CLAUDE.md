@@ -18,6 +18,7 @@ with the HACS integration "Template Media Player".
   - `tasks/main.yml` – checks, optional raspotify install, packages, script, config
   - `handlers/main.yml` – restart raspotify
   - `templates/raspotify-ha-hook.sh.j2` – the hook script
+  - `templates/raspotify-dropin.conf.j2` – systemd drop-in for service events
   - `examples/homeassistant/raspotify_media_player.yaml` – generic Home
     Assistant package (webhook sensor + Template Media Player), not deployed by
     the role
@@ -39,6 +40,18 @@ with the HACS integration "Template Media Player".
 - **Payload:** `track_changed` carries `title`, `artist`, `album`, `cover`,
   `duration_ms`; every other event only `event`. The Home Assistant sensor keeps
   the last metadata via `this.attributes`.
+- **Service events against stale state:** librespot sends nothing when
+  raspotify restarts, crashes or the Pi shuts down/boots, so the HA sensor could
+  stay on `playing` forever. A systemd drop-in
+  (`/etc/systemd/system/raspotify.service.d/homeassistant-hook.conf`, toggled by
+  `raspotify_ha_hook_service_events`, default true) calls the same script with
+  `PLAYER_EVENT=service_started` (`ExecStartPost`) and `service_stopped`
+  (`ExecStopPost`, also runs after a crash). Both are prefixed with `-` so a
+  failure never affects the service. Only these events use `curl --retry`
+  (boot: network may not be up yet); player events are sent once to keep their
+  order. A hard power loss is only cleared on the next boot.
+- **No timeout-based staleness check in HA** (rejected): it would only work for
+  `playing`, because a paused track sends no events for an arbitrary time.
 - **Handler is fine here:** unlike `claude_remote_control` there is no per-user
   loop, so a normal "Restart raspotify" handler is used.
 - **`LIBRESPOT_NAME`** is only touched when `raspotify_ha_hook_device_name` is
@@ -49,8 +62,21 @@ with the HACS integration "Template Media Player".
   service scripts and via the variables in the templates. Power state and
   on/off come from one switch (the user wraps power metering + IR in a
   template switch); volume from two buttons; play/pause/next/previous go to the
-  Spotify integration, guarded by the webhook sensor so they only act while the
-  Pi is the active device. The package is not deployed by the role because
+  Spotify integration.
+- **Two sources of truth, on purpose:** the display (state, title, cover) comes
+  from the webhook sensor (fast, but only knows the last event it received).
+  Playback commands are guarded only by the Spotify integration's `source`
+  attribute (active device from the Spotify cloud) == `spotify_device_name`
+  (should match `raspotify_ha_hook_device_name`), via the shared condition
+  anchor `&spotify_on_this_device`. So a missed webhook event can never pause or
+  skip on another device of the account. Trade-off: the Spotify integration
+  polls, so commands may do nothing for up to ~30 s after switching devices.
+- **Sensor reset in HA:** the template sensor has a second trigger (state of the
+  power switch to `off`, id `power_off`) that sets it to `stopped`;
+  `session_disconnected`, `service_started` and `service_stopped` also map to
+  `stopped`. Templates check `trigger.id == 'webhook'` before touching
+  `trigger.json`. The media player block comes first in the file because its
+  `variables` define the YAML anchors that the sensor's trigger reuses. The package is not deployed by the role because
   many Home Assistant installations (HA OS) are not managed via SSH/Ansible.
 - **raspotify install is opt-in** (`raspotify_ha_hook_install_raspotify`),
   because it pipes a remote install script.
@@ -63,4 +89,7 @@ with the HACS integration "Template Media Player".
   and `ansible-lint`, then test against a Pi with raspotify.
 - The Home Assistant package was only checked for YAML validity. Not yet
   verified in a real Home Assistant: that Template Media Player resolves
-  `variables` inside `global_template`.
+  `variables` inside `global_template`; the sensor templates were rendered with
+  plain Jinja and sample triggers only.
+- Not verified on a real Pi: which events librespot sends when playback is
+  transferred to another device (expected `stopped`, version-dependent).

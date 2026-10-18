@@ -75,8 +75,35 @@
   when: raspotify_ha_hook_device_name | length > 0
   notify: Restart raspotify
 
+- name: Create the drop-in directory for the raspotify unit
+  ansible.builtin.file:
+    path: /etc/systemd/system/raspotify.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: raspotify_ha_hook_service_events
+
+- name: Send service start/stop events to Home Assistant
+  ansible.builtin.template:
+    src: raspotify-dropin.conf.j2
+    dest: /etc/systemd/system/raspotify.service.d/homeassistant-hook.conf
+    owner: root
+    group: root
+    mode: "0644"
+  when: raspotify_ha_hook_service_events
+  notify: Restart raspotify
+
+- name: Remove the service start/stop events drop-in
+  ansible.builtin.file:
+    path: /etc/systemd/system/raspotify.service.d/homeassistant-hook.conf
+    state: absent
+  when: not raspotify_ha_hook_service_events
+  notify: Restart raspotify
+
 - name: Enable and start raspotify
   ansible.builtin.systemd_service:
     name: raspotify
     enabled: true
     state: started
+    daemon_reload: true

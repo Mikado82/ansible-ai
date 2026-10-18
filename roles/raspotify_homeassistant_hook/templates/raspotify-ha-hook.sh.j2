@@ -1,9 +1,18 @@
 #!/bin/bash
 # {{ ansible_managed }}
-# Called by librespot (raspotify) via LIBRESPOT_ONEVENT on every player event.
+# Called by librespot (raspotify) via LIBRESPOT_ONEVENT on every player event,
+# and by the raspotify systemd unit with PLAYER_EVENT=service_started/service_stopped.
 # Forwards the event (and track metadata on track_changed) to a Home Assistant webhook.
 
 WEBHOOK_URL="{{ raspotify_ha_hook_url | regex_replace('/$', '') }}/api/webhook/{{ raspotify_ha_hook_webhook_id }}"
+CURL_ARGS=(-s -m {{ raspotify_ha_hook_timeout }} -X POST -H "Content-Type: application/json")
+
+case "$PLAYER_EVENT" in
+  service_started|service_stopped)
+    # Sent by systemd, possibly right after boot before the network is fully up,
+    # so retry a few times. Player events are not retried to keep their order.
+    CURL_ARGS+=(--retry 3 --retry-connrefused --retry-delay 2) ;;
+esac
 
 case "$PLAYER_EVENT" in
   track_changed)
@@ -17,7 +26,6 @@ case "$PLAYER_EVENT" in
             cover: $cover, duration_ms: ($duration | tonumber? // 0)}' ;;
   *)
     jq -n --arg event "$PLAYER_EVENT" '{event: $event}' ;;
-esac | curl -s -m {{ raspotify_ha_hook_timeout }} -X POST \
-         -H "Content-Type: application/json" -d @- "$WEBHOOK_URL" >/dev/null
+esac | curl "${CURL_ARGS[@]}" -d @- "$WEBHOOK_URL" >/dev/null
 
 exit 0
