@@ -40,6 +40,11 @@
 #     the active one (attribute `source`). This comes from the Spotify cloud, so
 #     a missed webhook event can never pause another device. The Spotify
 #     integration polls, so `source` may lag up to ~30 s after switching devices.
+#
+# Auto power on (automation at the end of this file, remove it if not wanted):
+# switches the device on as soon as Spotify plays on the Pi. Triggered by the
+# webhook sensor changing to "playing" (immediate) and, as a fallback, by the
+# Spotify integration reporting this device as source (polled, slower).
 # ---------------------------------------------------------------------------
 
 media_player:
@@ -149,3 +154,27 @@ template:
           duration: >
             {% set track = trigger.id == 'webhook' and trigger.json.event == 'track_changed' %}
             {{ (trigger.json.duration_ms / 1000) | int if track else this.attributes.get('duration') }}
+
+automation:
+  # Switch the device on as soon as Spotify plays on the Pi.
+  # Note: if the device is switched off manually (e.g. with its own remote)
+  # while Spotify keeps playing on the Pi, the next "playing" event (resume,
+  # seek) switches it on again. Remove this block if you do not want that.
+  - id: my_stereo_auto_power_on
+    alias: "My Stereo: power on when Spotify plays on it"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: *raspotify_sensor
+        to: playing
+      - trigger: state
+        entity_id: *spotify_player
+        attribute: source
+        to: *spotify_device_name
+    conditions:
+      - condition: state
+        entity_id: *power_switch
+        state: "off"
+    actions:
+      - action: switch.turn_on
+        target: { entity_id: *power_switch }

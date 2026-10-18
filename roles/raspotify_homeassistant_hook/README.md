@@ -68,7 +68,7 @@ network is up.
 
 [`examples/homeassistant/raspotify_media_player.yaml`](examples/homeassistant/raspotify_media_player.yaml)
 is a ready-to-use [package](https://www.home-assistant.io/docs/configuration/packages/)
-with two parts:
+with three parts:
 
 - a **trigger-based template sensor** that receives the webhook, stores the
   playback state and keeps the last track metadata between events. It is reset
@@ -77,6 +77,11 @@ with two parts:
   [Template Media Player](https://github.com/EuleMitKeule/template-media-player)
   that combines the sensor with a power switch, volume buttons (e.g. IR via
   ESPHome) and the Spotify integration for play/pause/next/previous.
+- an **automation** that switches the device on as soon as Spotify plays on
+  the Pi: immediately via the webhook sensor (`playing`), and as a fallback when
+  the Spotify integration reports the Pi as active device. Remove the
+  `automation:` block if you do not want this. Automations defined in a package
+  work normally but cannot be edited in the UI editor.
 
 The display (state, title, cover) comes from the webhook sensor: fast, but it
 only knows the last event it received. Playback control is guarded by the

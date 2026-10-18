@@ -78,6 +78,16 @@ with the HACS integration "Template Media Player".
   `trigger.json`. The media player block comes first in the file because its
   `variables` define the YAML anchors that the sensor's trigger reuses. The package is not deployed by the role because
   many Home Assistant installations (HA OS) are not managed via SSH/Ansible.
+- **Auto power on is an automation in the package** (packages may contain
+  `automation:`; only the UI editor can't edit it). Triggers: webhook sensor
+  `to: playing` (immediate) and Spotify `source` `to: spotify_device_name`
+  (polled fallback); condition switch is off; action `switch.turn_on`. It sits
+  last in the file so the anchors are defined. Known effect: if the device is
+  switched off with its own remote while the Pi keeps playing, the next
+  `playing` event switches it on again. Turning off via the media player pauses
+  Spotify first, so that path does not re-trigger. A trigger-based template
+  sensor's `actions:` was rejected as a workaround: it is meant for fetching
+  data, not for switching devices.
 - **raspotify install is opt-in** (`raspotify_ha_hook_install_raspotify`),
   because it pipes a remote install script.
 
