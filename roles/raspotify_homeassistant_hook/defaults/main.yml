@@ -1,0 +1,18 @@
+---
+# raspotify_ha_hook_url and raspotify_ha_hook_webhook_id are mandatory and have
+# no default (see meta/argument_specs.yml)
+
+# Name the Pi shows up with in the Spotify app (LIBRESPOT_NAME).
+# Leave empty to keep the existing raspotify setting.
+raspotify_ha_hook_device_name: ""
+
+# Timeout in seconds for the HTTP request to Home Assistant
+raspotify_ha_hook_timeout: 5
+
+# raspotify config file and location of the hook script
+raspotify_ha_hook_conf_path: /etc/raspotify/conf
+raspotify_ha_hook_script_path: /usr/local/bin/raspotify-ha-hook.sh
+
+# Install raspotify via its official install script if it is missing
+raspotify_ha_hook_install_raspotify: false
+raspotify_ha_hook_install_url: https://dtcooper.github.io/raspotify/install.sh

@@ -1,0 +1,10 @@
+---
+- name: Forward raspotify player events to Home Assistant
+  hosts: all
+  become: true
+  roles:
+    - role: raspotify_homeassistant_hook
+      vars:
+        raspotify_ha_hook_url: http://homeassistant.local:8123
+        raspotify_ha_hook_webhook_id: raspotify_my_stereo
+        # raspotify_ha_hook_device_name: My Stereo

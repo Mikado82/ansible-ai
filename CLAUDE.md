@@ -17,3 +17,5 @@ Collection of Ansible roles and playbooks created with AI.
 
 - `roles/claude_remote_control` – Claude Code Remote Control as a systemd user
   service. See its own `CLAUDE.md` for design decisions and open steps.
+- `roles/raspotify_homeassistant_hook` – forwards raspotify/librespot player
+  events to a Home Assistant webhook. See its own `CLAUDE.md`.

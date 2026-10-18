@@ -1,0 +1,82 @@
+---
+- name: Validate the Home Assistant URL and webhook ID
+  ansible.builtin.assert:
+    that:
+      - raspotify_ha_hook_url is match('^https?://[^/\s]+')
+      - raspotify_ha_hook_webhook_id is match('^[A-Za-z0-9_-]+$')
+    fail_msg: >-
+      raspotify_ha_hook_url must be an http(s) URL (e.g.
+      http://homeassistant.local:8123) and raspotify_ha_hook_webhook_id must
+      only contain letters, digits, "_" and "-".
+    quiet: true
+
+- name: Check whether raspotify is installed
+  ansible.builtin.stat:
+    path: "{{ raspotify_ha_hook_conf_path }}"
+  register: raspotify_ha_hook_conf_stat
+
+- name: Install raspotify
+  when:
+    - not raspotify_ha_hook_conf_stat.stat.exists
+    - raspotify_ha_hook_install_raspotify
+  block:
+    - name: Download the raspotify install script
+      ansible.builtin.get_url:
+        url: "{{ raspotify_ha_hook_install_url }}"
+        dest: /tmp/raspotify-install.sh
+        mode: "0755"
+
+    - name: Run the raspotify install script
+      ansible.builtin.command: /tmp/raspotify-install.sh
+      args:
+        creates: "{{ raspotify_ha_hook_conf_path }}"
+
+- name: Fail if raspotify is missing
+  ansible.builtin.fail:
+    msg: >-
+      {{ raspotify_ha_hook_conf_path }} not found. Install raspotify first or set
+      raspotify_ha_hook_install_raspotify: true.
+  when:
+    - not raspotify_ha_hook_conf_stat.stat.exists
+    - not raspotify_ha_hook_install_raspotify
+
+- name: Install required packages
+  ansible.builtin.apt:
+    name:
+      - jq
+      - curl
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install the event hook script
+  ansible.builtin.template:
+    src: raspotify-ha-hook.sh.j2
+    dest: "{{ raspotify_ha_hook_script_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart raspotify
+
+- name: Register the event hook in the raspotify config
+  ansible.builtin.lineinfile:
+    path: "{{ raspotify_ha_hook_conf_path }}"
+    regexp: '^#?\s*LIBRESPOT_ONEVENT='
+    line: "LIBRESPOT_ONEVENT={{ raspotify_ha_hook_script_path }}"
+    backup: true
+  notify: Restart raspotify
+
+- name: Set the device name shown in the Spotify app
+  ansible.builtin.lineinfile:
+    path: "{{ raspotify_ha_hook_conf_path }}"
+    regexp: '^#?\s*LIBRESPOT_NAME='
+    line: 'LIBRESPOT_NAME="{{ raspotify_ha_hook_device_name }}"'
+    backup: true
+  when: raspotify_ha_hook_device_name | length > 0
+  notify: Restart raspotify
+
+- name: Enable and start raspotify
+  ansible.builtin.systemd_service:
+    name: raspotify
+    enabled: true
+    state: started

@@ -1,0 +1,44 @@
+---
+# Role argument validation (Ansible >= 2.11). Runs automatically before the
+# role's tasks and fails early if a mandatory variable is missing or a value
+# has the wrong type.
+argument_specs:
+  main:
+    short_description: Forward raspotify/librespot player events to a Home Assistant webhook
+    options:
+      raspotify_ha_hook_url:
+        type: str
+        required: true
+        description: >-
+          Base URL of Home Assistant as reachable from the Pi, e.g.
+          http://homeassistant.local:8123. Mandatory, no default.
+      raspotify_ha_hook_webhook_id:
+        type: str
+        required: true
+        description: >-
+          Webhook ID of the trigger-based template sensor in Home Assistant.
+          Mandatory, no default.
+      raspotify_ha_hook_device_name:
+        type: str
+        default: ""
+        description: Name of the device in the Spotify app (LIBRESPOT_NAME). Empty keeps the current setting.
+      raspotify_ha_hook_timeout:
+        type: int
+        default: 5
+        description: Timeout in seconds for the HTTP request to Home Assistant.
+      raspotify_ha_hook_conf_path:
+        type: str
+        default: /etc/raspotify/conf
+        description: Path of the raspotify config file.
+      raspotify_ha_hook_script_path:
+        type: str
+        default: /usr/local/bin/raspotify-ha-hook.sh
+        description: Where the hook script is installed.
+      raspotify_ha_hook_install_raspotify:
+        type: bool
+        default: false
+        description: Install raspotify via its official install script if it is missing.
+      raspotify_ha_hook_install_url:
+        type: str
+        default: https://dtcooper.github.io/raspotify/install.sh
+        description: URL of the raspotify install script.
