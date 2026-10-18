@@ -18,8 +18,10 @@ with the HACS integration "Template Media Player".
   - `tasks/main.yml` – checks, optional raspotify install, packages, script, config
   - `handlers/main.yml` – restart raspotify
   - `templates/raspotify-ha-hook.sh.j2` – the hook script
-- `roles/raspotify_homeassistant_hook/README.md` – user-facing docs, incl. the
-  Home Assistant template sensor
+  - `examples/homeassistant/raspotify_media_player.yaml` – generic Home
+    Assistant package (webhook sensor + Template Media Player), not deployed by
+    the role
+- `roles/raspotify_homeassistant_hook/README.md` – user-facing docs
 
 ## Decisions (keep these unless asked otherwise)
 
@@ -41,6 +43,15 @@ with the HACS integration "Template Media Player".
   loop, so a normal "Restart raspotify" handler is used.
 - **`LIBRESPOT_NAME`** is only touched when `raspotify_ha_hook_device_name` is
   set, so an existing name is kept by default.
+- **Home Assistant package:** placeholders only (`my_stereo`, `switch.my_stereo_power`,
+  ...). Entity IDs of the media player live once in its `variables` block and
+  are reused via YAML anchors (`&power_switch` / `*power_switch`) in the
+  service scripts and via the variables in the templates. Power state and
+  on/off come from one switch (the user wraps power metering + IR in a
+  template switch); volume from two buttons; play/pause/next/previous go to the
+  Spotify integration, guarded by the webhook sensor so they only act while the
+  Pi is the active device. The package is not deployed by the role because
+  many Home Assistant installations (HA OS) are not managed via SSH/Ansible.
 - **raspotify install is opt-in** (`raspotify_ha_hook_install_raspotify`),
   because it pipes a remote install script.
 
@@ -50,3 +61,6 @@ with the HACS integration "Template Media Player".
   environment variables were checked. **No real Ansible run yet**: run
   `ansible-playbook playbooks/raspotify-homeassistant-hook.yml --syntax-check`
   and `ansible-lint`, then test against a Pi with raspotify.
+- The Home Assistant package was only checked for YAML validity. Not yet
+  verified in a real Home Assistant: that Template Media Player resolves
+  `variables` inside `global_template`.

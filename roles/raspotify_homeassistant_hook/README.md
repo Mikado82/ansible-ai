@@ -54,41 +54,31 @@ Relevant events: `playing`, `paused`, `stopped`, `track_changed`,
 
 ## Home Assistant side
 
-A trigger-based template sensor stores the state and keeps the last track
-metadata between events:
+[`examples/homeassistant/raspotify_media_player.yaml`](examples/homeassistant/raspotify_media_player.yaml)
+is a ready-to-use [package](https://www.home-assistant.io/docs/configuration/packages/)
+with two parts:
 
-```yaml
-template:
-  - trigger:
-      - trigger: webhook
-        webhook_id: raspotify_my_stereo
-        allowed_methods: [POST]
-        local_only: true
-    sensor:
-      - name: "Raspotify My Stereo"
-        unique_id: raspotify_my_stereo
-        icon: mdi:spotify
-        state: >
-          {% set event = trigger.json.event %}
-          {% if event in ['playing', 'paused', 'stopped'] %}{{ event }}
-          {% elif event == 'session_disconnected' %}stopped
-          {% else %}{{ this.state }}{% endif %}
-        attributes:
-          title: >
-            {{ trigger.json.title if trigger.json.event == 'track_changed' else this.attributes.get('title') }}
-          artist: >
-            {{ trigger.json.artist if trigger.json.event == 'track_changed' else this.attributes.get('artist') }}
-          album: >
-            {{ trigger.json.album if trigger.json.event == 'track_changed' else this.attributes.get('album') }}
-          cover: >
-            {{ trigger.json.cover if trigger.json.event == 'track_changed' else this.attributes.get('cover') }}
-          duration: >
-            {{ (trigger.json.duration_ms / 1000) | int if trigger.json.event == 'track_changed' else this.attributes.get('duration') }}
-```
+- a **trigger-based template sensor** that receives the webhook, stores the
+  playback state and keeps the last track metadata between events
+- a **media player** built with the HACS integration
+  [Template Media Player](https://github.com/EuleMitKeule/template-media-player)
+  that combines the sensor with a power switch, volume buttons (e.g. IR via
+  ESPHome) and the Spotify integration for play/pause/next/previous. Playback
+  controls only act while this device is the active Spotify device.
 
-The sensor can then feed a media player built with the HACS integration
-[Template Media Player](https://github.com/EuleMitKeule/template-media-player),
-e.g. combined with a power switch and IR volume buttons for an old stereo.
+Setup:
+
+1. Install *Template Media Player* via HACS and set up the Spotify integration.
+2. Enable packages in `configuration.yaml` (once):
+   ```yaml
+   homeassistant:
+     packages: !include_dir_named packages
+   ```
+3. Copy the example to `/config/packages/` and replace the placeholders listed
+   at the top of the file. The webhook ID must match
+   `raspotify_ha_hook_webhook_id`. Entity IDs of the media player are set once
+   in its `variables` block and reused via YAML anchors.
+4. Check the configuration and restart Home Assistant.
 
 ## Limitations
 

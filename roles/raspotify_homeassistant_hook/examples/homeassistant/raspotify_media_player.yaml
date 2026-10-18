@@ -1,0 +1,129 @@
+# raspotify media player for Home Assistant
+#
+# Creates a media player entity for an audio device (e.g. an old stereo) fed by a
+# Raspberry Pi running raspotify. Combines:
+#   - a switch           -> on/off state and power control (e.g. a template switch
+#                           using power metering + IR)
+#   - raspotify webhook  -> playback state + track metadata (title, artist, cover, ...)
+#   - two buttons        -> volume up/down (e.g. IR buttons from ESPHome)
+#   - Spotify integration-> play/pause/next/previous, only while the Pi is the
+#                           active Spotify device
+#
+# Requires the HACS custom integration "Template Media Player":
+#   https://github.com/EuleMitKeule/template-media-player
+#
+# ---------------------------------------------------------------------------
+# SETTINGS - adjust these placeholders:
+#
+#   raspotify_my_stereo                 webhook ID (must match raspotify_ha_hook_webhook_id)
+#   "Raspotify My Stereo"               sensor name -> entity sensor.raspotify_my_stereo
+#   my_stereo / "My Stereo"             media player ID and name -> media_player.my_stereo
+#   switch.my_stereo_power              power switch of the device
+#   button.my_stereo_volume_up          volume up button
+#   button.my_stereo_volume_down        volume down button
+#   media_player.spotify_my_account     entity of the Spotify integration
+#
+# Entity IDs in the media player are set once in its `variables` block and reused
+# via YAML anchors, so only that block needs editing there.
+# If your volume control is a script instead of a button, replace `button.press`
+# with `script.turn_on` in volume_up/volume_down.
+# ---------------------------------------------------------------------------
+
+template:
+  # Playback state + metadata pushed by the Pi (librespot --onevent hook)
+  - trigger:
+      - trigger: webhook
+        webhook_id: raspotify_my_stereo
+        allowed_methods: [POST]
+        local_only: true
+    sensor:
+      - name: "Raspotify My Stereo"
+        unique_id: raspotify_my_stereo
+        icon: mdi:spotify
+        state: >
+          {% set event = trigger.json.event %}
+          {% if event in ['playing', 'paused', 'stopped'] %}{{ event }}
+          {% elif event == 'session_disconnected' %}stopped
+          {% else %}{{ this.state }}{% endif %}
+        attributes:
+          title: >
+            {{ trigger.json.title if trigger.json.event == 'track_changed' else this.attributes.get('title') }}
+          artist: >
+            {{ trigger.json.artist if trigger.json.event == 'track_changed' else this.attributes.get('artist') }}
+          album: >
+            {{ trigger.json.album if trigger.json.event == 'track_changed' else this.attributes.get('album') }}
+          cover: >
+            {{ trigger.json.cover if trigger.json.event == 'track_changed' else this.attributes.get('cover') }}
+          duration: >
+            {{ (trigger.json.duration_ms / 1000) | int if trigger.json.event == 'track_changed' else this.attributes.get('duration') }}
+
+media_player:
+  - platform: template_media_player
+    media_players:
+      my_stereo:
+        unique_id: my_stereo
+        name: My Stereo
+        device_class: speaker
+        icon: mdi:speaker
+        variables:
+          power_switch: &power_switch switch.my_stereo_power
+          volume_up_button: &volume_up_button button.my_stereo_volume_up
+          volume_down_button: &volume_down_button button.my_stereo_volume_down
+          spotify_player: &spotify_player media_player.spotify_my_account
+          raspotify_sensor: &raspotify_sensor sensor.raspotify_my_stereo
+        global_template: >
+          {% set is_on = is_state(power_switch, 'on') %}
+          {% set is_active = is_on and states(raspotify_sensor) in ['playing', 'paused'] %}
+        state: >
+          {% if not is_on %}off{% elif is_active %}{{ states(raspotify_sensor) }}{% else %}idle{% endif %}
+        attributes:
+          media_content_type: music
+          media_title: "{{ state_attr(raspotify_sensor, 'title') if is_active else none }}"
+          media_artist: "{{ state_attr(raspotify_sensor, 'artist') if is_active else none }}"
+          media_album_name: "{{ state_attr(raspotify_sensor, 'album') if is_active else none }}"
+          entity_picture: "{{ state_attr(raspotify_sensor, 'cover') if is_active else none }}"
+          media_duration: "{{ state_attr(raspotify_sensor, 'duration') if is_active else none }}"
+        service_scripts:
+          turn_on:
+            - action: switch.turn_on
+              target: { entity_id: *power_switch }
+          turn_off:
+            - if:
+                - condition: state
+                  entity_id: *raspotify_sensor
+                  state: playing
+              then:
+                - action: media_player.media_pause
+                  target: { entity_id: *spotify_player }
+            - action: switch.turn_off
+              target: { entity_id: *power_switch }
+          volume_up:
+            - action: button.press
+              target: { entity_id: *volume_up_button }
+          volume_down:
+            - action: button.press
+              target: { entity_id: *volume_down_button }
+          media_play:
+            - condition: state
+              entity_id: *raspotify_sensor
+              state: paused
+            - action: media_player.media_play
+              target: { entity_id: *spotify_player }
+          media_pause:
+            - condition: state
+              entity_id: *raspotify_sensor
+              state: playing
+            - action: media_player.media_pause
+              target: { entity_id: *spotify_player }
+          media_next_track:
+            - condition: state
+              entity_id: *raspotify_sensor
+              state: [playing, paused]
+            - action: media_player.media_next_track
+              target: { entity_id: *spotify_player }
+          media_previous_track:
+            - condition: state
+              entity_id: *raspotify_sensor
+              state: [playing, paused]
+            - action: media_player.media_previous_track
+              target: { entity_id: *spotify_player }

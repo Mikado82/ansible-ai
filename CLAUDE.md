@@ -13,6 +13,10 @@ Collection of Ansible roles and playbooks created with AI.
 - Mandatory variables have no default and are enforced via `meta/argument_specs.yml`.
 - Target Ansible >= 2.14; use fully qualified module names (`ansible.builtin.*`).
 - `meta/main.yml`: `author: Philipp Schaber` for every role.
+- Companion files for other systems that the role does not deploy itself
+  (e.g. Home Assistant config) go into `examples/<system>/` inside the role and
+  are linked from the role's README. Do not use `files/` for them; that is for
+  files the role copies to the target host.
 
 ## Roles
 
