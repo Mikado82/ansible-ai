@@ -1,7 +1,7 @@
 ---
 galaxy_info:
   role_name: claude_remote_control
-  author: philipp
+  author: Philipp Schaber
   description: Set up Claude Code Remote Control as a systemd user service
   license: MIT
   min_ansible_version: "2.14"

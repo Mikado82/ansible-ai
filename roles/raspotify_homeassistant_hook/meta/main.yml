@@ -1,7 +1,7 @@
 ---
 galaxy_info:
   role_name: raspotify_homeassistant_hook
-  author: philipp
+  author: Philipp Schaber
   description: Forward raspotify/librespot player events (incl. track metadata) to a Home Assistant webhook
   license: MIT
   min_ansible_version: "2.14"

@@ -12,6 +12,7 @@ Collection of Ansible roles and playbooks created with AI.
 - Variables are prefixed with the role's short name (e.g. `claude_rc_`).
 - Mandatory variables have no default and are enforced via `meta/argument_specs.yml`.
 - Target Ansible >= 2.14; use fully qualified module names (`ansible.builtin.*`).
+- `meta/main.yml`: `author: Philipp Schaber` for every role.
 
 ## Roles
 
