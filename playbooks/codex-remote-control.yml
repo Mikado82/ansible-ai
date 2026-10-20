@@ -1,0 +1,8 @@
+---
+- name: Install Codex CLI and configure Remote Control
+  hosts: codex_remote_control
+  become: true
+  roles:
+    - role: codex_remote_control
+      vars:
+        codex_rc_users: [admin]

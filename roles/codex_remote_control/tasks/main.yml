@@ -1,0 +1,26 @@
+---
+- name: Validate users and settings
+  ansible.builtin.assert:
+    that:
+      - codex_rc_users | length > 0
+      - codex_rc_users | unique | length == codex_rc_users | length
+      - codex_rc_users | select('match', '^[a-z_][a-z0-9_-]*[$]?$') | list | length == codex_rc_users | length
+      - codex_rc_project_dir is match('^[A-Za-z0-9_-][A-Za-z0-9_./-]*$')
+      - codex_rc_project_dir.split('/') | intersect(['', '.', '..']) | length == 0
+      - codex_rc_service_name is match('^[A-Za-z0-9_-]+$')
+      - codex_rc_release is match('^(latest|[0-9]+[.][0-9]+[.][0-9]+(-alpha([.][0-9]+){0,2}|-beta([.][0-9]+)?)?)$')
+      - ansible_facts.system == 'Linux'
+      - ansible_facts.os_family == 'Debian'
+      - ansible_facts.service_mgr == 'systemd'
+    fail_msg: Use distinct existing non-root users, a relative project path without dot components, and a valid release on Debian/Ubuntu with systemd.
+
+- name: Install native installer and user service prerequisites
+  ansible.builtin.package:
+    name: [ca-certificates, curl, tar, git, dbus-user-session]
+    state: present
+
+- name: Configure Codex for each user
+  ansible.builtin.include_tasks: user.yml
+  loop: "{{ codex_rc_users }}"
+  loop_control:
+    loop_var: _codex_rc_user

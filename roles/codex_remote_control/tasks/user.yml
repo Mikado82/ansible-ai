@@ -1,0 +1,64 @@
+---
+- name: Look up account
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ _codex_rc_user }}"
+
+- name: Store account details
+  ansible.builtin.set_fact:
+    _codex_rc_home: "{{ ansible_facts.getent_passwd[_codex_rc_user][4] }}"
+    _codex_rc_uid: "{{ ansible_facts.getent_passwd[_codex_rc_user][1] }}"
+    _codex_rc_install: {}
+
+- name: Validate account and home path for systemd
+  ansible.builtin.assert:
+    that:
+      - _codex_rc_uid | int > 0
+      - _codex_rc_home is match('^/[A-Za-z0-9_./-]+$')
+      - _codex_rc_home != '/'
+    fail_msg: Codex requires a non-root account with an absolute home path without whitespace or systemd specifiers.
+
+- name: Install and configure as the account owner
+  become: true
+  become_user: "{{ _codex_rc_user }}"
+  environment:
+    HOME: "{{ _codex_rc_home }}"
+    CODEX_HOME: "{{ _codex_rc_home }}/.codex"
+    XDG_RUNTIME_DIR: "/run/user/{{ _codex_rc_uid }}"
+  block:
+    - name: Check native Codex installation
+      ansible.builtin.stat:
+        path: "{{ _codex_rc_home }}/.local/bin/codex"
+      register: _codex_rc_binary
+
+    - name: Install or update native Codex CLI
+      when: codex_rc_update or not _codex_rc_binary.stat.exists
+      block:
+        - name: Create private installer directory
+          ansible.builtin.file:
+            path: "{{ _codex_rc_home }}/.cache/codex-ansible"
+            state: directory
+            mode: "0700"
+
+        - name: Download official installer
+          ansible.builtin.get_url:
+            url: https://chatgpt.com/codex/install.sh
+            dest: "{{ _codex_rc_home }}/.cache/codex-ansible/install.sh"
+            mode: "0600"
+
+        - name: Run official installer without interactive prompts
+          ansible.builtin.command:
+            argv:
+              - /bin/sh
+              - "{{ _codex_rc_home }}/.cache/codex-ansible/install.sh"
+              - --release
+              - "{{ codex_rc_release }}"
+          environment:
+            CODEX_NON_INTERACTIVE: "1"
+            CODEX_INSTALL_DIR: "{{ _codex_rc_home }}/.local/bin"
+          register: _codex_rc_install
+          changed_when: true
+
+    - name: Configure the Remote Control service
+      ansible.builtin.include_tasks: service.yml
+      when: not ansible_check_mode or _codex_rc_binary.stat.exists
