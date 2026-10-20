@@ -16,7 +16,8 @@
 
 - name: Install native installer and user service prerequisites
   ansible.builtin.package:
-    name: [ca-certificates, curl, tar, git, dbus-user-session]
+    # setfacl lets Ansible share temporary modules with the target non-root user.
+    name: [acl, ca-certificates, curl, tar, git, dbus-user-session]
     state: present
 
 - name: Configure Codex for each user
