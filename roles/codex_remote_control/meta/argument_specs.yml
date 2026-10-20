@@ -1,0 +1,25 @@
+---
+argument_specs:
+  main:
+    short_description: Install Codex CLI and configure Remote Control
+    options:
+      codex_rc_users:
+        type: list
+        elements: str
+        required: true
+        description: Existing non-root accounts to install and run Codex for
+      codex_rc_project_dir:
+        type: str
+        description: Working directory relative to each user's home
+      codex_rc_service_name:
+        type: str
+        description: systemd user unit name without suffix
+      codex_rc_release:
+        type: str
+        description: Installer release, latest or an explicit version
+      codex_rc_update:
+        type: bool
+        description: Run the installer even if Codex is already installed
+      codex_rc_start:
+        type: bool
+        description: Enable and start Remote Control after a ChatGPT login

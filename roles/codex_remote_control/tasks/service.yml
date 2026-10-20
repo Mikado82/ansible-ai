@@ -1,0 +1,71 @@
+---
+- name: Verify foreground Remote Control support
+  ansible.builtin.command:
+    argv: ["{{ _codex_rc_home }}/.local/bin/codex", remote-control, --help]
+  register: _codex_rc_help
+  changed_when: false
+  check_mode: false
+  failed_when: _codex_rc_help.rc != 0 or '--no-daemon' not in _codex_rc_help.stdout
+
+- name: Check login without exposing credentials or account details
+  ansible.builtin.command:
+    argv: ["{{ _codex_rc_home }}/.local/bin/codex", login, status]
+  register: _codex_rc_login
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  no_log: true
+
+- name: Determine whether a ChatGPT login is available
+  ansible.builtin.set_fact:
+    _codex_rc_authenticated: "{{ _codex_rc_login.rc == 0 and 'chatgpt' in ((_codex_rc_login.stdout ~ _codex_rc_login.stderr) | lower) }}"
+
+- name: Create working and unit directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0700"
+  loop:
+    - "{{ _codex_rc_home }}/{{ codex_rc_project_dir }}"
+    - "{{ _codex_rc_home }}/.config/systemd/user"
+
+- name: Write foreground Remote Control unit
+  ansible.builtin.template:
+    src: codex-rc.service.j2
+    dest: "{{ _codex_rc_home }}/.config/systemd/user/{{ codex_rc_service_name }}.service"
+    mode: "0644"
+  register: _codex_rc_unit
+
+- name: Enable lingering for services without an SSH login
+  become_user: root
+  ansible.builtin.command:
+    argv: [loginctl, enable-linger, "{{ _codex_rc_user }}"]
+    creates: "/var/lib/systemd/linger/{{ _codex_rc_user }}"
+
+- name: Start the user manager
+  become_user: root
+  ansible.builtin.systemd:
+    name: "user@{{ _codex_rc_uid }}.service"
+    state: started
+
+- name: Manage Remote Control service
+  ansible.builtin.systemd:
+    name: "{{ codex_rc_service_name }}.service"
+    scope: user
+    daemon_reload: true
+    enabled: "{{ codex_rc_start and _codex_rc_authenticated }}"
+    state: >-
+      {{ ('restarted' if (_codex_rc_unit is changed or _codex_rc_install is changed) else 'started')
+         if (codex_rc_start and _codex_rc_authenticated) else 'stopped' }}
+  when: not ansible_check_mode
+
+- name: Explain login and pairing steps
+  ansible.builtin.debug:
+    msg: >-
+      {{ _codex_rc_user }}: ChatGPT login detected={{ _codex_rc_authenticated }}.
+      If missing, SSH in as this user, run ~/.local/bin/codex login --device-auth,
+      and apply this role again. Service: systemctl --user status {{ codex_rc_service_name }}.
+      Pairing: stop this user service, run ~/.local/bin/codex remote-control start,
+      then ~/.local/bin/codex remote-control pair; enter the short-lived code in
+      the mobile app if offered. Afterwards run ~/.local/bin/codex remote-control stop
+      and restart this user service. Do not run both servers simultaneously.
