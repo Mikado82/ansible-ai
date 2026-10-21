@@ -1,4 +1,4 @@
-# ansible
+# ansible-ai
 Ansible roles and playbooks that were created using AI
 
 ## Roles
