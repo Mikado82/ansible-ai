@@ -4,7 +4,7 @@
 # Working directory of the Remote Control session, always relative to each
 # user's actual home directory (a leading "~/" is accepted). Absolute paths and
 # the home directory itself are rejected.
-claude_rc_project_dir: claude-code-rc
+claude_rc_project_dir: claude-remote
 
 # Name of the systemd user unit (without .service)
 claude_rc_service_name: claude-rc
