@@ -47,12 +47,16 @@
 - name: Install required packages
   ansible.builtin.package:
     name:
+      # setfacl lets Ansible share temporary modules with the target non-root user.
+      - acl
       - curl
       - git
+      # Provides the D-Bus session socket /run/user/<uid>/bus for user services.
+      - dbus-user-session
     state: present
 
 - name: Set up Claude Code Remote Control for each user
   ansible.builtin.include_tasks: user.yml
-  loop: "{{ claude_rc_users }}"
+  loop: "{{ claude_rc_users | default([], true) }}"
   loop_control:
     loop_var: _claude_rc_user

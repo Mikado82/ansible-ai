@@ -23,6 +23,19 @@
   ansible.builtin.set_fact:
     _claude_rc_project_dir: "{{ claude_rc_home | regex_replace('/+$', '') }}/{{ _claude_rc_project_rel }}"
 
+# Ansible's remote_tmp for tasks run via become_user. Creating it up front
+# avoids the warning that the module had to create it itself.
+- name: Create the Ansible remote_tmp directory of the user
+  ansible.builtin.file:
+    path: "{{ claude_rc_home }}/{{ item }}"
+    state: directory
+    owner: "{{ _claude_rc_user }}"
+    group: "{{ ansible_facts.getent_passwd[_claude_rc_user][2] }}"
+    mode: "0700"
+  loop:
+    - .ansible
+    - .ansible/tmp
+
 - name: Install Claude Code
   ansible.builtin.include_tasks: install.yml
 

@@ -18,6 +18,19 @@
       - _codex_rc_home != '/'
     fail_msg: Codex requires a non-root account with an absolute home path without whitespace or systemd specifiers.
 
+# Ansible's remote_tmp for tasks run via become_user. Creating it up front
+# avoids the warning that the module had to create it itself.
+- name: Create the Ansible remote_tmp directory of the account
+  ansible.builtin.file:
+    path: "{{ _codex_rc_home }}/{{ item }}"
+    state: directory
+    owner: "{{ _codex_rc_user }}"
+    group: "{{ ansible_facts.getent_passwd[_codex_rc_user][2] }}"
+    mode: "0700"
+  loop:
+    - .ansible
+    - .ansible/tmp
+
 - name: Install and configure as the account owner
   become: true
   become_user: "{{ _codex_rc_user }}"

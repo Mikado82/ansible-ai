@@ -36,6 +36,33 @@
     mode: "0644"
   register: _codex_rc_unit
 
+# PAM refuses to start the user manager for an expired password, which only
+# shows up as a cryptic failure of user@<uid>.service.
+- name: Look up password aging
+  become_user: root
+  ansible.builtin.getent:
+    database: shadow
+    key: "{{ _codex_rc_user }}"
+
+- name: Fail if the password of the account has expired
+  vars:
+    _codex_rc_shadow: "{{ ansible_facts.getent_shadow[_codex_rc_user] }}"
+    _codex_rc_today: "{{ (now(utc=true).timestamp() / 86400) | int }}"
+  ansible.builtin.assert:
+    that:
+      # Last change 0 means "must change at next login" (passwd -e, chage -d 0).
+      - _codex_rc_shadow[1] != '0'
+      - >-
+        _codex_rc_shadow[1] == '' or _codex_rc_shadow[3] in ['', '-1', '99999']
+        or (_codex_rc_shadow[1] | int) + (_codex_rc_shadow[3] | int) >= (_codex_rc_today | int)
+    fail_msg: >-
+      The password of {{ _codex_rc_user }} has expired, so PAM refuses to start
+      the user's systemd instance (user@{{ _codex_rc_uid }}.service) and the
+      service cannot run. Let the user log in once and set a new password, or
+      reset the expiry as root, e.g. "chage -d $(date +%F) {{ _codex_rc_user }}"
+      (see "chage -l {{ _codex_rc_user }}").
+    quiet: true
+
 - name: Enable lingering for services without an SSH login
   become_user: root
   ansible.builtin.command:

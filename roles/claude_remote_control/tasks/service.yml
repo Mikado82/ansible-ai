@@ -13,10 +13,43 @@
     quiet: true
   when: claude_rc_resume_sessions
 
+# PAM refuses to start the user manager for an expired password, which only
+# shows up as a cryptic failure of user@<uid>.service.
+- name: Look up password aging of {{ _claude_rc_user }}
+  ansible.builtin.getent:
+    database: shadow
+    key: "{{ _claude_rc_user }}"
+
+- name: Fail if the password of the user has expired
+  vars:
+    _claude_rc_shadow: "{{ ansible_facts.getent_shadow[_claude_rc_user] }}"
+    _claude_rc_today: "{{ (now(utc=true).timestamp() / 86400) | int }}"
+  ansible.builtin.assert:
+    that:
+      # Last change 0 means "must change at next login" (passwd -e, chage -d 0).
+      - _claude_rc_shadow[1] != '0'
+      - >-
+        _claude_rc_shadow[1] == '' or _claude_rc_shadow[3] in ['', '-1', '99999']
+        or (_claude_rc_shadow[1] | int) + (_claude_rc_shadow[3] | int) >= (_claude_rc_today | int)
+    fail_msg: >-
+      The password of {{ _claude_rc_user }} has expired, so PAM refuses to start
+      the user's systemd instance (user@{{ claude_rc_uid }}.service) and the
+      service cannot run. Let the user log in once and set a new password, or
+      reset the expiry as root, e.g. "chage -d $(date +%F) {{ _claude_rc_user }}"
+      (see "chage -l {{ _claude_rc_user }}").
+    quiet: true
+
 - name: Enable linger (user services keep running without a login)
   ansible.builtin.command: loginctl enable-linger {{ _claude_rc_user }}
   args:
     creates: "/var/lib/systemd/linger/{{ _claude_rc_user }}"
+
+# enable-linger only starts the user manager when it creates the linger file,
+# so make sure it is running even if linger was already enabled.
+- name: Start the user manager
+  ansible.builtin.systemd_service:
+    name: "user@{{ claude_rc_uid }}.service"
+    state: started
 
 - name: Wait for the user runtime to be ready
   ansible.builtin.wait_for:
