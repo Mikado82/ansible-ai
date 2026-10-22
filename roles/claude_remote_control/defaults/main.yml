@@ -1,12 +1,17 @@
 ---
-# claude_rc_users (list of users) is mandatory and has no default (see meta/argument_specs.yml)
+# claude_rc_users is mandatory and has no default (see meta/argument_specs.yml).
+# Each entry is a user name or a dict:
+#   - name: deploy            # mandatory
+#     project_dir: work/api   # optional, defaults to claude_rc_project_dir
+#     state: present          # optional, present (default) or absent
 
-# Working directory of the Remote Control session, always relative to each
-# user's actual home directory (a leading "~/" is accepted). Absolute paths and
-# the home directory itself are rejected.
+# Default working directory of an entry, always relative to the user's actual
+# home directory (a leading "~/" is accepted). Absolute paths and the home
+# directory itself are rejected.
 claude_rc_project_dir: claude-remote
 
-# Name of the systemd user unit (without .service)
+# Prefix of the systemd user units (without .service). Each entry gets the unit
+# "<prefix>-<project dir with / replaced by ->", e.g. claude-rc-work-api.
 claude_rc_service_name: claude-rc
 
 # Install Claude Code via the official installer if it is missing
@@ -46,3 +51,10 @@ claude_rc_resume_sessions: true
 
 # How long systemd waits for a clean shutdown when stopping the service
 claude_rc_stop_timeout: 30
+
+# state: absent: also delete the project directory with all its contents
+claude_rc_remove_project_dir: false
+
+# state: absent for the last entry of a user: also delete the Claude Code login
+# and configuration (~/.claude and ~/.claude.json)
+claude_rc_remove_config: false

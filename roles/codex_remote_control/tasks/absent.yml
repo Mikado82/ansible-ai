@@ -1,0 +1,109 @@
+---
+# Runs once per absent entry of codex_rc_users; the entry is _codex_rc_entry.
+# Removes the unit of this project directory. The project directory itself is
+# kept unless codex_rc_remove_project_dir is set. When no other unit of this
+# role is left for the account, uninstall.yml removes Codex as well.
+
+- name: Store the user and unit name of the entry
+  ansible.builtin.set_fact:
+    _codex_rc_user: "{{ _codex_rc_entry.name }}"
+    _codex_rc_service: "{{ _codex_rc_entry.service }}"
+
+- name: Look up account
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ _codex_rc_user }}"
+    fail_key: false
+
+- name: Notice that there is nothing to remove for a missing account
+  ansible.builtin.debug:
+    msg: Account "{{ _codex_rc_user }}" does not exist on {{ inventory_hostname }}; nothing to remove.
+  when: (ansible_facts.getent_passwd | default({})).get(_codex_rc_user) is none
+
+- name: Remove the service for this project directory
+  when: (ansible_facts.getent_passwd | default({})).get(_codex_rc_user) is not none
+  block:
+    - name: Store account details
+      ansible.builtin.set_fact:
+        _codex_rc_home: "{{ ansible_facts.getent_passwd[_codex_rc_user][4] }}"
+        _codex_rc_uid: "{{ ansible_facts.getent_passwd[_codex_rc_user][1] }}"
+
+    - name: Check whether the user manager is running
+      ansible.builtin.stat:
+        path: "/run/user/{{ _codex_rc_uid }}/bus"
+      register: _codex_rc_bus
+
+    - name: Remove a legacy unit that served this project directory
+      ansible.builtin.include_tasks: legacy.yml
+
+    - name: Check whether the unit exists
+      ansible.builtin.stat:
+        path: "{{ _codex_rc_home }}/.config/systemd/user/{{ _codex_rc_service }}.service"
+      register: _codex_rc_unit_stat
+
+    - name: Stop and disable the service
+      become: true
+      become_user: "{{ _codex_rc_user }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ _codex_rc_uid }}"
+      ansible.builtin.systemd:
+        name: "{{ _codex_rc_service }}.service"
+        scope: user
+        state: stopped
+        enabled: false
+      when:
+        - _codex_rc_bus.stat.exists
+        - _codex_rc_unit_stat.stat.exists
+
+    - name: Remove the unit file and its enablement link
+      ansible.builtin.file:
+        path: "{{ _codex_rc_home }}/.config/systemd/user/{{ item }}"
+        state: absent
+      loop:
+        - "{{ _codex_rc_service }}.service"
+        - "default.target.wants/{{ _codex_rc_service }}.service"
+      register: _codex_rc_unit_removed
+
+    - name: Reload the user manager
+      become: true
+      become_user: "{{ _codex_rc_user }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ _codex_rc_uid }}"
+      ansible.builtin.systemd:
+        scope: user
+        daemon_reload: true
+      when:
+        - _codex_rc_bus.stat.exists
+        - _codex_rc_unit_removed is changed
+
+    - name: Remove the project directory
+      ansible.builtin.file:
+        path: "{{ _codex_rc_home }}/{{ _codex_rc_entry.rel }}"
+        state: absent
+      when: codex_rc_remove_project_dir
+
+    # Units written by this role carry a marker line (see the template). A
+    # legacy unit without the marker still needs the binary as well.
+    - name: Check whether the user has a unit directory
+      ansible.builtin.stat:
+        path: "{{ _codex_rc_home }}/.config/systemd/user"
+      register: _codex_rc_unit_dir
+
+    - name: Look for remaining units of this role
+      when: _codex_rc_unit_dir.stat.isdir | default(false)
+      ansible.builtin.find:
+        paths: "{{ _codex_rc_unit_dir.stat.path }}"
+        patterns: "*.service"
+        contains: "^# Managed by role codex_remote_control$"
+      register: _codex_rc_remaining
+
+    - name: Look for a remaining legacy unit
+      ansible.builtin.stat:
+        path: "{{ _codex_rc_home }}/.config/systemd/user/{{ codex_rc_service_name }}.service"
+      register: _codex_rc_remaining_legacy
+
+    - name: Uninstall Codex when no unit of the account is left
+      ansible.builtin.include_tasks: uninstall.yml
+      when:
+        - _codex_rc_remaining.matched | default(0) == 0
+        - not _codex_rc_remaining_legacy.stat.exists

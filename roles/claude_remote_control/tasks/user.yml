@@ -1,5 +1,10 @@
 ---
-# Runs once per entry of claude_rc_users; the current user is _claude_rc_user.
+# Runs once per present entry of claude_rc_users; the entry is _claude_rc_entry.
+
+- name: Store the user and unit name of the entry
+  ansible.builtin.set_fact:
+    _claude_rc_user: "{{ _claude_rc_entry.name }}"
+    _claude_rc_service: "{{ _claude_rc_entry.service }}"
 
 - name: Look up user account {{ _claude_rc_user }}
   ansible.builtin.getent:
@@ -21,7 +26,7 @@
 
 - name: Determine the effective project directory
   ansible.builtin.set_fact:
-    _claude_rc_project_dir: "{{ claude_rc_home | regex_replace('/+$', '') }}/{{ _claude_rc_project_rel }}"
+    _claude_rc_project_dir: "{{ claude_rc_home | regex_replace('/+$', '') }}/{{ _claude_rc_entry.rel }}"
 
 # Ansible's remote_tmp for tasks run via become_user. Creating it up front
 # avoids the warning that the module had to create it itself.

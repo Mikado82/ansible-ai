@@ -1,10 +1,11 @@
 # {{ ansible_managed }}
+# Managed by role codex_remote_control
 [Unit]
 Description=Codex CLI Remote Control (experimental)
 
 [Service]
 Type=simple
-WorkingDirectory={{ _codex_rc_home }}/{{ codex_rc_project_dir }}
+WorkingDirectory={{ _codex_rc_home }}/{{ _codex_rc_entry.rel }}
 Environment=HOME={{ _codex_rc_home }}
 Environment=CODEX_HOME={{ _codex_rc_home }}/.codex
 Environment=PATH={{ _codex_rc_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin

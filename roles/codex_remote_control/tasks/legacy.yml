@@ -1,0 +1,39 @@
+---
+# Before units were named per project directory, every account had a single
+# unit named codex_rc_service_name. Remove it if it served this project
+# directory. Expects _codex_rc_bus (stat of the user's D-Bus socket).
+- name: Look for a legacy unit named {{ codex_rc_service_name }}
+  ansible.builtin.stat:
+    path: "{{ _codex_rc_home }}/.config/systemd/user/{{ codex_rc_service_name }}.service"
+  register: _codex_rc_legacy_stat
+
+- name: Read the legacy unit
+  ansible.builtin.slurp:
+    src: "{{ _codex_rc_legacy_stat.stat.path }}"
+  register: _codex_rc_legacy_unit
+  when: _codex_rc_legacy_stat.stat.exists
+
+- name: Remove the legacy unit if it served this project directory
+  when:
+    - _codex_rc_legacy_stat.stat.exists
+    - ('WorkingDirectory=' ~ _codex_rc_home ~ '/' ~ _codex_rc_entry.rel) in (_codex_rc_legacy_unit.content | b64decode).splitlines()
+  block:
+    - name: Stop and disable the legacy unit
+      become: true
+      become_user: "{{ _codex_rc_user }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ _codex_rc_uid }}"
+      ansible.builtin.systemd:
+        name: "{{ codex_rc_service_name }}.service"
+        scope: user
+        state: stopped
+        enabled: false
+      when: _codex_rc_bus.stat.exists
+
+    - name: Remove the legacy unit file and its enablement link
+      ansible.builtin.file:
+        path: "{{ _codex_rc_home }}/.config/systemd/user/{{ item }}"
+        state: absent
+      loop:
+        - "{{ codex_rc_service_name }}.service"
+        - "default.target.wants/{{ codex_rc_service_name }}.service"

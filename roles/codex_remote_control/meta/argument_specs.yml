@@ -5,15 +5,17 @@ argument_specs:
     options:
       codex_rc_users:
         type: list
-        elements: str
+        elements: raw
         required: true
-        description: Existing non-root accounts to install and run Codex for
+        description: >-
+          Existing non-root accounts to install and run Codex for; each entry is a
+          user name or a dict with name, project_dir and state (present or absent)
       codex_rc_project_dir:
         type: str
-        description: Working directory relative to each user's home
+        description: Default working directory of an entry, relative to the user's home
       codex_rc_service_name:
         type: str
-        description: systemd user unit name without suffix
+        description: Prefix of the systemd user units; each entry gets "<prefix>-<project dir slug>"
       codex_rc_release:
         type: str
         description: Installer release, latest or an explicit version
@@ -23,3 +25,9 @@ argument_specs:
       codex_rc_start:
         type: bool
         description: Enable and start Remote Control after a ChatGPT login
+      codex_rc_remove_project_dir:
+        type: bool
+        description: With state absent, also delete the project directory and its contents
+      codex_rc_remove_config:
+        type: bool
+        description: With state absent for an account's last entry, also delete ~/.codex

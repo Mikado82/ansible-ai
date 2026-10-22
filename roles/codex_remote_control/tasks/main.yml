@@ -1,27 +1,83 @@
 ---
-- name: Validate users and settings
+# An entry is either a user name or a dict with name, project_dir and state.
+- name: Validate the entries of codex_rc_users
   ansible.builtin.assert:
     that:
       - codex_rc_users | default([], true) | length > 0
-      - codex_rc_users | unique | length == codex_rc_users | length
-      - codex_rc_users | select('match', '^[a-z_][a-z0-9_-]*[$]?$') | list | length == codex_rc_users | length
-      - codex_rc_project_dir is match('^[A-Za-z0-9_-][A-Za-z0-9_./-]*$')
-      - codex_rc_project_dir.split('/') | intersect(['', '.', '..']) | length == 0
+      - codex_rc_users is sequence and codex_rc_users is not string and codex_rc_users is not mapping
+      - codex_rc_users | reject('string') | reject('mapping') | list | length == 0
+      - codex_rc_users | select('mapping') | map('dict2items') | flatten | map(attribute='key')
+        | difference(['name', 'project_dir', 'state']) | length == 0
+      - codex_rc_users | select('mapping') | map(attribute='state', default='present')
+        | difference(['present', 'absent']) | length == 0
+    fail_msg: >-
+      codex_rc_users must be a non-empty list of user names or dicts with the
+      keys name (mandatory), project_dir and state (present or absent).
+
+- name: Reset the normalized entries
+  ansible.builtin.set_fact:
+    _codex_rc_entries: []
+
+# The unit name is derived from the project directory, so every project
+# directory of a user gets its own service.
+- name: Normalize the entries of codex_rc_users
+  vars:
+    _raw: "{{ {'name': item} if item is string else item }}"
+    _dir: "{{ codex_rc_project_dir if _raw.project_dir is not defined or _raw.project_dir is none else _raw.project_dir }}"
+    _rel: "{{ _dir | string | trim | regex_replace('/+$', '') }}"
+  ansible.builtin.set_fact:
+    _codex_rc_entries: >-
+      {{ _codex_rc_entries + [{
+           'name': _raw.name | default('') | string | trim,
+           'rel': _rel,
+           'state': _raw.state | default('present'),
+           'service': codex_rc_service_name ~ '-' ~ (_rel | regex_replace('[^A-Za-z0-9_-]+', '-'))
+         }] }}
+  loop: "{{ codex_rc_users }}"
+
+- name: Validate users and settings
+  vars:
+    _names: "{{ _codex_rc_entries | map(attribute='name') | list }}"
+    _rels: "{{ _codex_rc_entries | map(attribute='rel') | list }}"
+    _dirs: "{{ _names | zip(_rels) | map('join', ':') | list }}"
+    _units: "{{ _names | zip(_codex_rc_entries | map(attribute='service')) | map('join', ':') | list }}"
+  ansible.builtin.assert:
+    that:
+      - _names | select('match', '^[a-z_][a-z0-9_-]*[$]?$') | list | length == _names | length
+      - _rels | select('match', '^[A-Za-z0-9_-][A-Za-z0-9_./-]*$') | list | length == _rels | length
+      - _rels | map('split', '/') | flatten | intersect(['', '.', '..']) | length == 0
+      - _dirs | unique | length == _dirs | length
+      - _units | unique | length == _units | length
       - codex_rc_service_name is match('^[A-Za-z0-9_-]+$')
       - codex_rc_release is match('^(latest|[0-9]+[.][0-9]+[.][0-9]+(-alpha([.][0-9]+){0,2}|-beta([.][0-9]+)?)?)$')
       - ansible_facts.system == 'Linux'
       - ansible_facts.os_family == 'Debian'
       - ansible_facts.service_mgr == 'systemd'
-    fail_msg: Use distinct existing non-root users, a relative project path without dot components, and a valid release on Debian/Ubuntu with systemd.
+    fail_msg: >-
+      Use existing non-root users, relative project paths without spaces or dot
+      components, each user/project directory only once (also after mapping it
+      to a unit name, e.g. work/api and work-api collide), and a valid release on
+      Debian/Ubuntu with systemd.
 
 - name: Install native installer and user service prerequisites
   ansible.builtin.package:
     # setfacl lets Ansible share temporary modules with the target non-root user.
     name: [acl, ca-certificates, curl, tar, git, dbus-user-session]
     state: present
+  when: _codex_rc_entries | selectattr('state', 'eq', 'present') | list | length > 0
 
-- name: Configure Codex for each user
+# Present entries first, so moving a project directory in one run (old entry
+# absent, new entry present) keeps Codex installed.
+- name: Configure Codex for each present entry
   ansible.builtin.include_tasks: user.yml
-  loop: "{{ codex_rc_users | default([], true) }}"
+  loop: "{{ _codex_rc_entries | selectattr('state', 'eq', 'present') | list }}"
   loop_control:
-    loop_var: _codex_rc_user
+    loop_var: _codex_rc_entry
+    label: "{{ _codex_rc_entry.name }}: {{ _codex_rc_entry.rel }}"
+
+- name: Remove Codex Remote Control for each absent entry
+  ansible.builtin.include_tasks: absent.yml
+  loop: "{{ _codex_rc_entries | selectattr('state', 'eq', 'absent') | list }}"
+  loop_control:
+    loop_var: _codex_rc_entry
+    label: "{{ _codex_rc_entry.name }}: {{ _codex_rc_entry.rel }}"

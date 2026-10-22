@@ -1,0 +1,112 @@
+---
+# Runs once per absent entry of claude_rc_users; the entry is _claude_rc_entry.
+# Removes the unit of this project directory. The project directory itself is
+# kept unless claude_rc_remove_project_dir is set. When no other unit of this
+# role is left for the user, uninstall.yml removes Claude Code as well.
+
+- name: Store the user and unit name of the entry
+  ansible.builtin.set_fact:
+    _claude_rc_user: "{{ _claude_rc_entry.name }}"
+    _claude_rc_service: "{{ _claude_rc_entry.service }}"
+
+- name: Look up user account {{ _claude_rc_user }}
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ _claude_rc_user }}"
+    fail_key: false
+
+- name: Notice that there is nothing to remove for a missing user
+  ansible.builtin.debug:
+    msg: User "{{ _claude_rc_user }}" does not exist on {{ inventory_hostname }}; nothing to remove.
+  when: (ansible_facts.getent_passwd | default({})).get(_claude_rc_user) is none
+
+- name: Remove the service for this project directory
+  when: (ansible_facts.getent_passwd | default({})).get(_claude_rc_user) is not none
+  block:
+    - name: Store UID, home and project directory
+      ansible.builtin.set_fact:
+        claude_rc_uid: "{{ ansible_facts.getent_passwd[_claude_rc_user][1] }}"
+        claude_rc_home: "{{ ansible_facts.getent_passwd[_claude_rc_user][4] }}"
+        _claude_rc_project_dir: >-
+          {{ ansible_facts.getent_passwd[_claude_rc_user][4] | regex_replace('/+$', '') }}/{{ _claude_rc_entry.rel }}
+
+    - name: Check whether the user manager is running
+      ansible.builtin.stat:
+        path: "/run/user/{{ claude_rc_uid }}/bus"
+      register: _claude_rc_bus
+
+    - name: Remove a legacy unit that served this project directory
+      ansible.builtin.include_tasks: legacy.yml
+
+    - name: Check whether the unit exists
+      ansible.builtin.stat:
+        path: "{{ claude_rc_home }}/.config/systemd/user/{{ _claude_rc_service }}.service"
+      register: _claude_rc_unit_stat
+
+    # SIGINT stop (see the unit), so the sessions are not archived.
+    - name: Stop and disable the service
+      ansible.builtin.systemd_service:
+        name: "{{ _claude_rc_service }}"
+        scope: user
+        state: stopped
+        enabled: false
+      become: true
+      become_user: "{{ _claude_rc_user }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ claude_rc_uid }}"
+      when:
+        - _claude_rc_bus.stat.exists
+        - _claude_rc_unit_stat.stat.exists
+
+    - name: Remove the unit file and its enablement link
+      ansible.builtin.file:
+        path: "{{ claude_rc_home }}/.config/systemd/user/{{ item }}"
+        state: absent
+      loop:
+        - "{{ _claude_rc_service }}.service"
+        - "default.target.wants/{{ _claude_rc_service }}.service"
+      register: _claude_rc_unit_removed
+
+    - name: Reload the user manager
+      ansible.builtin.systemd_service:
+        scope: user
+        daemon_reload: true
+      become: true
+      become_user: "{{ _claude_rc_user }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ claude_rc_uid }}"
+      when:
+        - _claude_rc_bus.stat.exists
+        - _claude_rc_unit_removed is changed
+
+    - name: Remove the project directory
+      ansible.builtin.file:
+        path: "{{ _claude_rc_project_dir }}"
+        state: absent
+      when: claude_rc_remove_project_dir
+
+    # Units written by this role carry a marker line (see the template). A
+    # legacy unit without the marker still needs the binary as well.
+    - name: Check whether the user has a unit directory
+      ansible.builtin.stat:
+        path: "{{ claude_rc_home }}/.config/systemd/user"
+      register: _claude_rc_unit_dir
+
+    - name: Look for remaining units of this role
+      when: _claude_rc_unit_dir.stat.isdir | default(false)
+      ansible.builtin.find:
+        paths: "{{ _claude_rc_unit_dir.stat.path }}"
+        patterns: "*.service"
+        contains: "^# Managed by role claude_remote_control$"
+      register: _claude_rc_remaining
+
+    - name: Look for a remaining legacy unit
+      ansible.builtin.stat:
+        path: "{{ claude_rc_home }}/.config/systemd/user/{{ claude_rc_service_name }}.service"
+      register: _claude_rc_remaining_legacy
+
+    - name: Uninstall Claude Code when no unit of the user is left
+      ansible.builtin.include_tasks: uninstall.yml
+      when:
+        - _claude_rc_remaining.matched | default(0) == 0
+        - not _claude_rc_remaining_legacy.stat.exists

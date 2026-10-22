@@ -1,0 +1,41 @@
+---
+# Before units were named per project directory, every user had a single unit
+# named claude_rc_service_name. Remove it if it served this project directory;
+# it is stopped with SIGINT, so the new unit resumes its sessions.
+# Expects _claude_rc_bus (stat of the user's D-Bus socket) from the caller.
+
+- name: Look for a legacy unit named {{ claude_rc_service_name }}
+  ansible.builtin.stat:
+    path: "{{ claude_rc_home }}/.config/systemd/user/{{ claude_rc_service_name }}.service"
+  register: _claude_rc_legacy_stat
+
+- name: Read the legacy unit
+  ansible.builtin.slurp:
+    src: "{{ _claude_rc_legacy_stat.stat.path }}"
+  register: _claude_rc_legacy_unit
+  when: _claude_rc_legacy_stat.stat.exists
+
+- name: Remove the legacy unit if it served this project directory
+  when:
+    - _claude_rc_legacy_stat.stat.exists
+    - ('WorkingDirectory=' ~ _claude_rc_project_dir) in (_claude_rc_legacy_unit.content | b64decode).splitlines()
+  block:
+    - name: Stop and disable the legacy unit
+      ansible.builtin.systemd_service:
+        name: "{{ claude_rc_service_name }}"
+        scope: user
+        state: stopped
+        enabled: false
+      become: true
+      become_user: "{{ _claude_rc_user }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ claude_rc_uid }}"
+      when: _claude_rc_bus.stat.exists
+
+    - name: Remove the legacy unit file and its enablement link
+      ansible.builtin.file:
+        path: "{{ claude_rc_home }}/.config/systemd/user/{{ item }}"
+        state: absent
+      loop:
+        - "{{ claude_rc_service_name }}.service"
+        - "default.target.wants/{{ claude_rc_service_name }}.service"

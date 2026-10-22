@@ -6,6 +6,7 @@
 {%   set _ = rc_args.append(claude_rc_extra_args) %}
 {% endif %}
 # {{ ansible_managed }}
+# Managed by role claude_remote_control
 [Unit]
 Description=Claude Code Remote Control
 After=network-online.target
