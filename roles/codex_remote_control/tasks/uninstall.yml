@@ -1,0 +1,56 @@
+---
+# Runs from absent.yml when the account has no unit of this role left.
+# Removes what the official installer created (see install.sh: binaries in
+# ~/.local/bin, release packages in $CODEX_HOME/packages, a PATH block).
+- name: Remove the native Codex installation
+  ansible.builtin.file:
+    path: "{{ _codex_rc_home }}/{{ item }}"
+    state: absent
+  loop:
+    - .local/bin/codex
+    - .local/bin/codex-code-mode-host
+    - .codex/packages
+    - .cache/codex-ansible
+
+- name: Check which shell startup files exist
+  ansible.builtin.stat:
+    path: "{{ _codex_rc_home }}/{{ item }}"
+  loop: [.bashrc, .bash_profile, .profile, .zshrc, .zprofile]
+  register: _codex_rc_profiles
+
+- name: Remove the installer's PATH block
+  ansible.builtin.blockinfile:
+    path: "{{ item.stat.path }}"
+    marker: "# {mark} Codex installer {mark}"
+    marker_begin: ">>>"
+    marker_end: "<<<"
+    state: absent
+  loop: "{{ _codex_rc_profiles.results | selectattr('stat.exists') | list }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Remove the Codex login and configuration
+  ansible.builtin.file:
+    path: "{{ _codex_rc_home }}/.codex"
+    state: absent
+  when: codex_rc_remove_config
+
+# Linger may still be needed by other user services (e.g. Claude Code Remote
+# Control of the same user), so only disable it if none is enabled anymore.
+- name: Check whether any user service is enabled
+  ansible.builtin.stat:
+    path: "{{ _codex_rc_home }}/.config/systemd/user/default.target.wants"
+  register: _codex_rc_wants_dir
+
+- name: Look for other enabled user services
+  ansible.builtin.find:
+    paths: "{{ _codex_rc_wants_dir.stat.path }}"
+    file_type: any
+  register: _codex_rc_wanted
+  when: _codex_rc_wants_dir.stat.isdir | default(false)
+
+- name: Disable linger
+  ansible.builtin.command:
+    argv: [loginctl, disable-linger, "{{ _codex_rc_user }}"]
+    removes: "/var/lib/systemd/linger/{{ _codex_rc_user }}"
+  when: _codex_rc_wanted.matched | default(0) == 0

@@ -1,47 +1,85 @@
 ---
-- name: Reject the old single-user variable claude_rc_user
-  ansible.builtin.assert:
-    that:
-      - claude_rc_user is not defined
-    fail_msg: >-
-      claude_rc_user was replaced by the list claude_rc_users. Use e.g.
-      claude_rc_users: [deploy] instead.
-    quiet: true
-
 - name: Ensure the mandatory variable claude_rc_users is set
   ansible.builtin.assert:
     that:
       - claude_rc_users is defined
       - claude_rc_users is sequence
       - claude_rc_users is not string
+      - claude_rc_users is not mapping
       - claude_rc_users | length > 0
-      - claude_rc_users | map('trim') | select('equalto', '') | list | length == 0
-      - claude_rc_users | unique | length == claude_rc_users | length
     fail_msg: >-
       claude_rc_users is mandatory and has no default. Set it to a non-empty
-      list of distinct users that should run Claude Code and the service,
-      e.g. claude_rc_users: [deploy].
+      list of users, e.g. claude_rc_users: [deploy] or
+      claude_rc_users: [{name: deploy, project_dir: work/api}].
     quiet: true
 
-# The project directory is always relative to each user's home directory. A
-# leading "~/" is accepted and stripped.
-- name: Normalize the project directory relative to the home directory
+# An entry is either a user name or a dict with name, project_dir and state.
+- name: Validate the entries of claude_rc_users
+  ansible.builtin.assert:
+    that:
+      - item is string or item is mapping
+      - item is string or item.keys() | difference(['name', 'project_dir', 'state']) | length == 0
+      - (item if item is string else item.name | default('')) | string | trim | length > 0
+      - item is string or item.state | default('present') in ['present', 'absent']
+    fail_msg: >-
+      Invalid entry in claude_rc_users: {{ item }}. Use a user name or a dict
+      with the keys name (mandatory), project_dir and state (present or absent).
+    quiet: true
+  loop: "{{ claude_rc_users }}"
+
+- name: Reset the normalized entries
   ansible.builtin.set_fact:
-    _claude_rc_project_rel: "{{ claude_rc_project_dir | trim | regex_replace('^~/', '') | regex_replace('/+$', '') }}"
+    _claude_rc_entries: []
+
+# The project directory is always relative to each user's home directory. A
+# leading "~/" is accepted and stripped. The unit name is derived from it, so
+# every project directory of a user gets its own service.
+- name: Normalize the entries of claude_rc_users
+  vars:
+    _raw: "{{ {'name': item} if item is string else item }}"
+    _dir: "{{ claude_rc_project_dir if _raw.project_dir is not defined or _raw.project_dir is none else _raw.project_dir }}"
+    _rel: "{{ _dir | string | trim | regex_replace('^~/', '') | regex_replace('/+$', '') }}"
+  ansible.builtin.set_fact:
+    _claude_rc_entries: >-
+      {{ _claude_rc_entries + [{
+           'name': _raw.name | string | trim,
+           'rel': _rel,
+           'state': _raw.state | default('present'),
+           'service': claude_rc_service_name ~ '-' ~ (_rel | regex_replace('[^A-Za-z0-9_.-]+', '-'))
+         }] }}
+  loop: "{{ claude_rc_users }}"
 
 # Claude Code never saves workspace trust for the home directory itself, so the
 # service would fail with "Workspace not trusted" on every start.
-- name: Ensure the project directory is a subdirectory of the home directory
+- name: Ensure each project directory is a subdirectory of the home directory
   ansible.builtin.assert:
     that:
-      - _claude_rc_project_rel | length > 0
-      - _claude_rc_project_rel is not match('[/~]')
-      - _claude_rc_project_rel.split('/') | select('in', ['', '.', '..']) | list | length == 0
+      - item.rel | length > 0
+      - item.rel is not match('[/~]')
+      - item.rel.split('/') | select('in', ['', '.', '..']) | list | length == 0
     fail_msg: >-
-      claude_rc_project_dir "{{ claude_rc_project_dir }}" must be a path
-      relative to the users' home directories (e.g. claude-code-rc or
+      The project directory "{{ item.rel }}" of {{ item.name }} must be a path
+      relative to the user's home directory (e.g. claude-remote or
       work/claude), not absolute, not the home directory itself and without
       "." or ".." components.
+    quiet: true
+  loop: "{{ _claude_rc_entries }}"
+  loop_control:
+    label: "{{ item.name }}: {{ item.rel }}"
+
+- name: Ensure every project directory and unit name is used only once per user
+  vars:
+    _names: "{{ _claude_rc_entries | map(attribute='name') | list }}"
+    _dirs: "{{ _names | zip(_claude_rc_entries | map(attribute='rel')) | map('join', ':') | list }}"
+    _units: "{{ _names | zip(_claude_rc_entries | map(attribute='service')) | map('join', ':') | list }}"
+  ansible.builtin.assert:
+    that:
+      - _dirs | unique | length == _dirs | length
+      - _units | unique | length == _units | length
+    fail_msg: >-
+      claude_rc_users lists the same user and project directory more than
+      once, or two project directories of a user map to the same unit name
+      (e.g. work/api and work-api). Units: {{ _units | join(', ') }}
     quiet: true
 
 - name: Install required packages
@@ -54,9 +92,20 @@
       # Provides the D-Bus session socket /run/user/<uid>/bus for user services.
       - dbus-user-session
     state: present
+  when: _claude_rc_entries | selectattr('state', 'eq', 'present') | list | length > 0
 
-- name: Set up Claude Code Remote Control for each user
+# Present entries first, so moving a project directory in one run (old entry
+# absent, new entry present) keeps Claude Code installed.
+- name: Set up Claude Code Remote Control for each present entry
   ansible.builtin.include_tasks: user.yml
-  loop: "{{ claude_rc_users | default([], true) }}"
+  loop: "{{ _claude_rc_entries | selectattr('state', 'eq', 'present') | list }}"
   loop_control:
-    loop_var: _claude_rc_user
+    loop_var: _claude_rc_entry
+    label: "{{ _claude_rc_entry.name }}: {{ _claude_rc_entry.rel }}"
+
+- name: Remove Claude Code Remote Control for each absent entry
+  ansible.builtin.include_tasks: absent.yml
+  loop: "{{ _claude_rc_entries | selectattr('state', 'eq', 'absent') | list }}"
+  loop_control:
+    loop_var: _claude_rc_entry
+    label: "{{ _claude_rc_entry.name }}: {{ _claude_rc_entry.rel }}"

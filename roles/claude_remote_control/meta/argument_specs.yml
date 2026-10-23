@@ -8,19 +8,25 @@ argument_specs:
     options:
       claude_rc_users:
         type: list
-        elements: str
+        elements: raw
         required: true
-        description: Users that each get Claude Code and their own service. Mandatory, no default.
+        description: >-
+          Entries that each get Claude Code and their own service. An entry is a
+          user name or a dict with the keys name (mandatory), project_dir
+          (default claude_rc_project_dir) and state (present or absent).
+          Mandatory, no default.
       claude_rc_project_dir:
         type: str
-        default: claude-code-rc
+        default: claude-remote
         description: >-
-          Working directory of the Remote Control session, relative to each user's home
+          Default working directory of an entry, relative to the user's home
           directory (a leading "~/" is accepted). Absolute paths are rejected.
       claude_rc_service_name:
         type: str
         default: claude-rc
-        description: Name of the systemd user unit (without .service).
+        description: >-
+          Prefix of the systemd user units (without .service); each entry gets
+          "<prefix>-<project dir with / replaced by ->".
       claude_rc_install:
         type: bool
         default: true
@@ -59,3 +65,13 @@ argument_specs:
         type: int
         default: 30
         description: Seconds systemd waits for a clean shutdown when stopping the service.
+      claude_rc_remove_project_dir:
+        type: bool
+        default: false
+        description: With state absent, also delete the project directory and its contents.
+      claude_rc_remove_config:
+        type: bool
+        default: false
+        description: >-
+          With state absent for the last entry of a user, also delete the Claude Code
+          login and configuration (~/.claude, ~/.claude.json).

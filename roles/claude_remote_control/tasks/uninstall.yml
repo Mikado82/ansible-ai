@@ -1,0 +1,60 @@
+---
+# Runs from absent.yml when the user has no unit of this role left.
+
+# Only the native installation in the home directory; system-wide binaries
+# (e.g. /usr/bin/claude) were not installed by this role.
+- name: Remove the native Claude Code installation
+  ansible.builtin.file:
+    path: "{{ claude_rc_home }}/{{ item }}"
+    state: absent
+  loop:
+    - .local/bin/claude
+    - .local/share/claude
+    - .local/state/claude
+    - .cache/claude
+
+- name: Check which login shell profiles exist
+  ansible.builtin.stat:
+    path: "{{ claude_rc_home }}/{{ item }}"
+  loop:
+    - .bash_profile
+    - .profile
+  register: _claude_rc_profiles
+
+- name: Remove the PATH block from the login shell profiles
+  ansible.builtin.blockinfile:
+    path: "{{ item.stat.path }}"
+    marker: "# {mark} ANSIBLE MANAGED: claude_remote_control PATH"
+    state: absent
+  loop: "{{ _claude_rc_profiles.results | selectattr('stat.exists') | list }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Remove the Claude Code login and configuration
+  ansible.builtin.file:
+    path: "{{ claude_rc_home }}/{{ item }}"
+    state: absent
+  loop:
+    - .claude
+    - .claude.json
+  when: claude_rc_remove_config
+
+# Linger may still be needed by other user services (e.g. Codex Remote
+# Control of the same user), so only disable it if none is enabled anymore.
+- name: Check whether any user service is enabled
+  ansible.builtin.stat:
+    path: "{{ claude_rc_home }}/.config/systemd/user/default.target.wants"
+  register: _claude_rc_wants_dir
+
+- name: Look for other enabled user services
+  ansible.builtin.find:
+    paths: "{{ _claude_rc_wants_dir.stat.path }}"
+    file_type: any
+  register: _claude_rc_wanted
+  when: _claude_rc_wants_dir.stat.isdir | default(false)
+
+- name: Disable linger
+  ansible.builtin.command: loginctl disable-linger {{ _claude_rc_user }}
+  args:
+    removes: "/var/lib/systemd/linger/{{ _claude_rc_user }}"
+  when: _claude_rc_wanted.matched | default(0) == 0

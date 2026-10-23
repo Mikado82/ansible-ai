@@ -13,32 +13,48 @@ server, so it keeps running after SSH logout and across reboots.
 - `roles/claude_remote_control/` (this directory)
   - `defaults/main.yml` – defaults (all variables prefixed `claude_rc_`)
   - `meta/argument_specs.yml` – role argument validation (types, required vars)
-  - `tasks/main.yml` – input checks, packages, loops over `claude_rc_users`
-  - `tasks/user.yml` – per user: lookup, effective project dir, includes the rest
+  - `tasks/main.yml` – input checks, normalizes `claude_rc_users` into
+    `_claude_rc_entries`, packages, loops over present then absent entries
+  - `tasks/user.yml` – per present entry: lookup, effective project dir, includes the rest
   - `tasks/install.yml` – packages, project dir, Claude Code native installer
   - `tasks/path.yml` – locate the binary, optionally fix login-shell PATH
   - `tasks/service.yml` – checks, linger, unit, enable/start
+  - `tasks/legacy.yml` – removes an old single `claude-rc` unit serving the entry's dir
+  - `tasks/absent.yml` – per absent entry: stop/remove unit, optionally the dir
+  - `tasks/uninstall.yml` – user's last unit gone: binary, PATH block, config, linger
   - `templates/claude-rc.service.j2` – the systemd unit
 - `roles/claude_remote_control/README.md` – user-facing docs
 
 ## Decisions (keep these unless asked otherwise)
 
 - **Language:** everything in English: comments, task names, messages, README.
-- **`claude_rc_users` (list) is mandatory, no default.** Enforced by
-  `argument_specs.yml` (`required: true`) plus an explicit `assert` that
-  rejects empty lists, empty entries and duplicates, plus a per-user check that
-  the user exists (`getent`, `fail_key: false`). The old `claude_rc_user` is
-  rejected with a migration hint.
-- **Per-user loop:** `main.yml` runs `include_tasks: user.yml` with
-  `loop_var: _claude_rc_user`; all per-user facts are overwritten each
-  iteration. There is **no handler**: handlers run after the loop and would
+- **`claude_rc_users` (list) is mandatory, no default.** Entries are user
+  names (= `{name: ...}`) or dicts with `name`, `project_dir` (default
+  `claude_rc_project_dir`) and `state` (`present`/`absent`). Enforced by
+  `argument_specs.yml` (`required: true`, `elements: raw`) plus asserts on keys,
+  `state`, path rules and uniqueness of (user, dir) and (user, unit). Present
+  entries fail if the user doesn't exist; absent entries skip missing users.
+- **Per-entry loop:** `main.yml` normalizes into `_claude_rc_entries`
+  (`name`, `rel`, `state`, `service`) and runs `user.yml` for present entries,
+  **then** `absent.yml` for absent ones (`loop_var: _claude_rc_entry`), so
+  moving a dir in one run keeps the binary. All per-entry facts are overwritten
+  each iteration. There is **no handler**: handlers run after the loop and would
   only see the last user's facts, so the service task restarts directly when
   the registered unit template result (`claude_rc_unit`) changed.
-- **Project dir:** `claude_rc_project_dir` (default `claude-code-rc`) is
-  **always relative to each user's home** (real home from getent). A leading
-  `~/` is stripped; absolute paths, empty values (= home itself) and `.`/`..`
-  components are rejected in `main.yml`. The per-user result is the internal
-  fact `_claude_rc_project_dir`. Defaults must not reference other runtime vars,
+- **Project dir:** per entry, **always relative to the user's home** (real
+  home from getent). A leading `~/` is stripped; absolute paths, empty values
+  (= home itself) and `.`/`..` components are rejected in `main.yml`. The
+  absolute result is the internal fact `_claude_rc_project_dir`.
+- **Unit names:** `<claude_rc_service_name>-<rel dir slug>` (no per-entry
+  override). A legacy `claude-rc.service` whose `WorkingDirectory` matches an
+  entry is stopped, disabled and deleted (`legacy.yml`).
+- **`state: absent`:** removes the unit, keeps the dir (unless
+  `claude_rc_remove_project_dir`). The user's agent counts as unused when no
+  `*.service` with the marker line `# Managed by role claude_remote_control`
+  (from the template) and no legacy unit is left; then `uninstall.yml` removes
+  the home-dir native install and the PATH block, optionally `~/.claude*`
+  (`claude_rc_remove_config`), and disables linger only if
+  `default.target.wants` is empty (other roles' services, e.g. Codex, survive). Defaults must not reference other runtime vars,
   because argument validation renders defaults before tasks run.
 - **Binary path:** detected from `claude_rc_binary_candidates` (or forced via
   `claude_rc_binary_path`) and written **absolute** into `ExecStart`, so the

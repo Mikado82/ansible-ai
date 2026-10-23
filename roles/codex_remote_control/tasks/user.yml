@@ -1,4 +1,11 @@
 ---
+# Runs once per present entry of codex_rc_users; the entry is _codex_rc_entry.
+
+- name: Store the user and unit name of the entry
+  ansible.builtin.set_fact:
+    _codex_rc_user: "{{ _codex_rc_entry.name }}"
+    _codex_rc_service: "{{ _codex_rc_entry.service }}"
+
 - name: Look up account
   ansible.builtin.getent:
     database: passwd

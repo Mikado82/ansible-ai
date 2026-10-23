@@ -1,8 +1,16 @@
 ---
-# codex_rc_users is mandatory; accounts must already exist.
+# codex_rc_users is mandatory; accounts must already exist. Each entry is a user
+# name or a dict with name (mandatory), project_dir (default below) and state
+# (present or absent).
 codex_rc_project_dir: codex-work
+# Prefix of the user units; each entry gets "<prefix>-<project dir slug>".
 codex_rc_service_name: codex-rc
 codex_rc_release: latest
 # Re-run the installer even when the binary already exists.
 codex_rc_update: false
 codex_rc_start: true
+# state: absent: also delete the project directory with all its contents.
+codex_rc_remove_project_dir: false
+# state: absent for the last entry of an account: also delete ~/.codex
+# (login, configuration and history).
+codex_rc_remove_config: false
