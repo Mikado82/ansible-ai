@@ -89,16 +89,6 @@ argument_specs:
         elements: str
         default: [python3-gpiozero, python3-lgpio, python3-websockets]
         description: Distribution packages the controller needs.
-      lva_aiy_legacy_units:
-        type: list
-        elements: str
-        default: [aiy-lva-peripheral]
-        description: Units of a previous manual setup to stop, disable and remove.
-      lva_aiy_legacy_paths:
-        type: list
-        elements: str
-        default: [/opt/aiy-lva]
-        description: Paths of a previous manual setup to remove.
       lva_aiy_remove_user:
         type: bool
         default: false

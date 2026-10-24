@@ -14,9 +14,8 @@ Assistant (LVA) through LVA's peripheral WebSocket API (port 6055).
   - `defaults/main.yml` – defaults (all variables prefixed `lva_aiy_`)
   - `meta/argument_specs.yml` – role argument validation (types, choices)
   - `tasks/main.yml` – value checks, then `present.yml` or `absent.yml`
-  - `tasks/present.yml` – legacy cleanup, packages, user, script, unit, start
+  - `tasks/present.yml` – packages, user, script, unit, start
   - `tasks/absent.yml` – stop/remove unit, script, state dir, optionally user
-  - `tasks/legacy.yml` – removes the manual setup from the original chat
   - `handlers/main.yml` – restart the controller
   - `templates/lva-aiy-voicehat.py.j2` – the controller (Python, asyncio)
   - `templates/lva-aiy-voicehat.service.j2` – systemd system unit
@@ -55,19 +54,23 @@ Assistant (LVA) through LVA's peripheral WebSocket API (port 6055).
   controller reconnects anyway. A non-fatal `wait_for` check
   (`lva_aiy_check_api`) only warns if the API is unreachable, since LVA may
   legitimately be down during the run.
-- **Legacy cleanup:** the original chat installed the script manually as
-  `/opt/aiy-lva/aiy_lva_peripheral.py` with `aiy-lva-peripheral.service`.
-  Both are removed (configurable), so two processes never fight over the GPIOs.
+- **No legacy cleanup:** the manual setup from the original chat
+  (`/opt/aiy-lva/`, `aiy-lva-peripheral.service`) was removed by an earlier
+  version of the role on the user's Pi; that code was dropped afterwards.
 
 ## Status / next steps
 
 - Checked: YAML validity, defaults matching `argument_specs.yml`, rendering
   both templates with plain Jinja2 (with the `trim_blocks` setting Ansible
-  uses) and compiling the rendered script with Python. **Not yet run:**
-  `ansible-playbook playbooks/lva-aiy-voicehat.yml --syntax-check`,
-  `ansible-lint`, and a real run against a Pi.
-- The controller logic itself was tested by the user on the Pi before it was
-  turned into a role (manual setup).
+  uses) and compiling the rendered script with Python.
+- `ansible-playbook playbooks/lva-aiy-voicehat.yml --syntax-check` passes.
+  `ansible-lint` only reports `var-naming[no-role-prefix]` (the short
+  `lva_aiy_` prefix is the repo convention) and `no-handler` for the
+  immediate `daemon_reload` in `absent.yml`.
+- Real run on the user's Pi (Raspberry Pi OS trixie, LVA in Docker with host
+  networking): service active, connected to LVA, GPIO 23/25 claimed, idle
+  pulse measurable. Button press and listening/thinking LED were left to the
+  user to check by hand.
 - Not verified: `python3-lgpio` availability on older Raspberry Pi OS releases
   (Bullseye). Remove it from `lva_aiy_packages` there; gpiozero then falls
   back to RPi.GPIO.

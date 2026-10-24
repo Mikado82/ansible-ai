@@ -27,11 +27,9 @@ from Home Assistant (`assist_satellite.start_conversation`).
 
 ## What it does
 
-1. Stops and removes a previous manual setup (`lva_aiy_legacy_units`,
-   `lva_aiy_legacy_paths`), so two controllers never compete for the GPIOs.
-2. Installs `python3-gpiozero`, `python3-lgpio` and `python3-websockets`.
-3. Creates the system user `lva-aiy` and adds it to the `gpio` group.
-4. Installs the controller to `/opt/lva-aiy-voicehat/` and a systemd unit
+1. Installs `python3-gpiozero`, `python3-lgpio` and `python3-websockets`.
+2. Creates the system user `lva-aiy` and adds it to the `gpio` group.
+3. Installs the controller to `/opt/lva-aiy-voicehat/` and a systemd unit
    `lva-aiy-voicehat.service`, then enables and starts it.
 
 With `lva_aiy_state: absent` it stops and removes all of this again (the user
@@ -71,8 +69,6 @@ LVA on the same host.
 | `lva_aiy_install_dir` | `/opt/lva-aiy-voicehat` | Location of the controller |
 | `lva_aiy_service_name` | `lva-aiy-voicehat` | systemd unit name |
 | `lva_aiy_packages` | see defaults | Required distribution packages |
-| `lva_aiy_legacy_units` | `[aiy-lva-peripheral]` | Units of a manual setup to remove |
-| `lva_aiy_legacy_paths` | `[/opt/aiy-lva]` | Paths of a manual setup to remove |
 | `lva_aiy_remove_user` | `false` | With `absent`, also remove the user |
 
 ### Finding a visible idle brightness

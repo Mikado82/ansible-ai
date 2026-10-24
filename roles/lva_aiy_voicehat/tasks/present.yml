@@ -1,7 +1,4 @@
 ---
-- name: Remove a previous manual setup
-  ansible.builtin.include_tasks: legacy.yml
-
 - name: Install required packages
   ansible.builtin.apt:
     name: "{{ lva_aiy_packages }}"

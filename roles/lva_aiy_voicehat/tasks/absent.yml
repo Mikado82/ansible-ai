@@ -32,9 +32,6 @@
     path: "/var/lib/{{ lva_aiy_service_name }}"
     state: absent
 
-- name: Remove a previous manual setup
-  ansible.builtin.include_tasks: legacy.yml
-
 - name: Remove the system user
   ansible.builtin.user:
     name: "{{ lva_aiy_user }}"

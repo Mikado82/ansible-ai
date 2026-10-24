@@ -54,12 +54,5 @@ lva_aiy_packages:
   - python3-lgpio
   - python3-websockets
 
-# Units and paths of a previous manual setup that would compete for the GPIO
-# pins. They are stopped, disabled and removed when present.
-lva_aiy_legacy_units:
-  - aiy-lva-peripheral
-lva_aiy_legacy_paths:
-  - /opt/aiy-lva
-
 # state: absent: also remove the system user
 lva_aiy_remove_user: false
