@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  role_name: lva_aiy_voicehat
+  author: Philipp Schaber
+  description: Use the button and LED of the Google AIY Voice HAT with Linux Voice Assistant
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: Debian
+      versions: [all]
+dependencies: []

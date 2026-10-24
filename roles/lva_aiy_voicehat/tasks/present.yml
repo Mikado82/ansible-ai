@@ -1,0 +1,96 @@
+---
+- name: Install required packages
+  ansible.builtin.apt:
+    name: "{{ lva_aiy_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Look up the GPIO group
+  ansible.builtin.getent:
+    database: group
+    key: "{{ lva_aiy_gpio_group }}"
+    fail_key: false
+
+- name: Fail if the GPIO group is missing
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.getent_group[lva_aiy_gpio_group] is not none
+    fail_msg: >-
+      The group "{{ lva_aiy_gpio_group }}" does not exist on
+      {{ inventory_hostname }}. On Raspberry Pi OS it grants access to the GPIO
+      chip. Set lva_aiy_gpio_group to the group that owns /dev/gpiochip*.
+    quiet: true
+
+- name: Create the system user
+  ansible.builtin.user:
+    name: "{{ lva_aiy_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: /nonexistent
+    create_home: false
+    groups: "{{ lva_aiy_gpio_group }}"
+    append: true
+  notify: Restart the AIY Voice HAT controller
+
+- name: Create the install directory
+  ansible.builtin.file:
+    path: "{{ lva_aiy_install_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the controller script
+  ansible.builtin.template:
+    src: lva-aiy-voicehat.py.j2
+    dest: "{{ lva_aiy_install_dir }}/lva_aiy_voicehat.py"
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart the AIY Voice HAT controller
+
+- name: Install the systemd unit
+  ansible.builtin.template:
+    src: lva-aiy-voicehat.service.j2
+    dest: "/etc/systemd/system/{{ lva_aiy_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart the AIY Voice HAT controller
+
+- name: Enable and start the controller
+  ansible.builtin.systemd_service:
+    name: "{{ lva_aiy_service_name }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+
+# Only a warning: LVA may legitimately be down (e.g. container restarting)
+# and the controller reconnects on its own.
+- name: Check that the LVA peripheral API is reachable
+  ansible.builtin.wait_for:
+    host: "{{ lva_aiy_lva_uri | urlsplit('hostname') }}"
+    port: "{{ lva_aiy_lva_uri | urlsplit('port') | default(443 if lva_aiy_lva_uri is match('^wss:') else 80, true) }}"
+    timeout: 5
+  register: _lva_aiy_api_check
+  ignore_errors: true
+  when: lva_aiy_check_api
+
+- name: Warn if the LVA peripheral API is not reachable
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: {{ lva_aiy_lva_uri }} is not reachable from {{ inventory_hostname }}.
+      The controller keeps retrying, but the button and LED do nothing until
+      it is. Check that LVA is running, that its version provides the
+      peripheral API, and, if it runs in Docker, that the container uses host
+      networking or publishes the port (e.g. "docker port <container>").
+  when:
+    - lva_aiy_check_api
+    - _lva_aiy_api_check is failed
+
+- name: Show where to find the logs
+  ansible.builtin.debug:
+    msg: >-
+      Logs: ssh {{ inventory_hostname }}
+      'journalctl -u {{ lva_aiy_service_name }} -f'

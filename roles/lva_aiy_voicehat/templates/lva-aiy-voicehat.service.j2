@@ -1,0 +1,28 @@
+# {{ ansible_managed }}
+# Managed by role lva_aiy_voicehat
+[Unit]
+Description=AIY Voice HAT button and LED for Linux Voice Assistant
+After=network-online.target{% if lva_aiy_lva_unit %} {{ lva_aiy_lva_unit }}{% endif %}
+
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ lva_aiy_user }}
+SupplementaryGroups={{ lva_aiy_gpio_group }}
+ExecStart=/usr/bin/python3 {{ lva_aiy_install_dir }}/lva_aiy_voicehat.py
+# lgpio creates its notification pipes in the working directory, so it must be
+# writable by the service user.
+StateDirectory={{ lva_aiy_service_name }}
+WorkingDirectory=/var/lib/{{ lva_aiy_service_name }}
+Environment=PYTHONUNBUFFERED=1
+Restart=always
+RestartSec=5
+
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,39 @@
+---
+- name: Check whether the unit exists
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/{{ lva_aiy_service_name }}.service"
+  register: _lva_aiy_unit_stat
+
+- name: Stop and disable the controller
+  ansible.builtin.systemd_service:
+    name: "{{ lva_aiy_service_name }}"
+    state: stopped
+    enabled: false
+  when: _lva_aiy_unit_stat.stat.exists
+
+- name: Remove the unit file
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ lva_aiy_service_name }}.service"
+    state: absent
+  register: _lva_aiy_unit_removed
+
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: _lva_aiy_unit_removed is changed
+
+- name: Remove the install directory
+  ansible.builtin.file:
+    path: "{{ lva_aiy_install_dir }}"
+    state: absent
+
+- name: Remove the state directory
+  ansible.builtin.file:
+    path: "/var/lib/{{ lva_aiy_service_name }}"
+    state: absent
+
+- name: Remove the system user
+  ansible.builtin.user:
+    name: "{{ lva_aiy_user }}"
+    state: absent
+  when: lva_aiy_remove_user

@@ -1,0 +1,15 @@
+---
+- name: Use the AIY Voice HAT button and LED with Linux Voice Assistant
+  hosts: all
+  become: true
+  roles:
+    - role: lva_aiy_voicehat
+      vars:
+        # Unit the controller starts after: the LVA unit if LVA runs natively,
+        # or docker.service if LVA runs in a Docker container on this host.
+        # A container must use host networking (or publish port 6055) for
+        # ws://localhost:6055 to work.
+        lva_aiy_lva_unit: docker.service
+        # Faint idle pulse: seconds between pulses and raw PWM duty cycle
+        # lva_aiy_idle_interval: 10.0
+        # lva_aiy_idle_max: 0.10

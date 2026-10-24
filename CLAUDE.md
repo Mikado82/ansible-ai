@@ -22,5 +22,7 @@ Collection of Ansible roles and playbooks created with AI.
 
 - `roles/claude_remote_control` – Claude Code Remote Control as a systemd user
   service. See its own `CLAUDE.md` for design decisions and open steps.
+- `roles/lva_aiy_voicehat` – Google AIY Voice HAT button and LED for Linux
+  Voice Assistant via its peripheral WebSocket API. See its own `CLAUDE.md`.
 - `roles/raspotify_homeassistant_hook` – forwards raspotify/librespot player
   events to a Home Assistant webhook. See its own `CLAUDE.md`.
