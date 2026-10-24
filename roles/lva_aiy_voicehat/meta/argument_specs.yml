@@ -1,0 +1,105 @@
+---
+# Role argument validation (Ansible >= 2.11). Runs automatically before the
+# role's tasks and fails early if a value has the wrong type.
+argument_specs:
+  main:
+    short_description: Use the button and LED of the Google AIY Voice HAT with Linux Voice Assistant
+    options:
+      lva_aiy_state:
+        type: str
+        default: present
+        choices: [present, absent]
+        description: Install and run the controller (present) or remove it (absent).
+      lva_aiy_lva_uri:
+        type: str
+        default: ws://localhost:6055
+        description: URI of the LVA peripheral WebSocket API.
+      lva_aiy_lva_unit:
+        type: str
+        default: ""
+        description: >-
+          Optional systemd unit the controller starts after: the LVA unit, or
+          docker.service if LVA runs in a Docker container on this host.
+      lva_aiy_check_api:
+        type: bool
+        default: true
+        description: After deploying, check that the peripheral API is reachable and warn if not.
+      lva_aiy_gpio_button:
+        type: int
+        default: 23
+        description: GPIO (BCM) of the button.
+      lva_aiy_gpio_led:
+        type: int
+        default: 25
+        description: GPIO (BCM) of the LED in the button.
+      lva_aiy_listening_brightness:
+        type: float
+        default: 1.0
+        description: LED brightness while listening (0.0-1.0, gamma corrected).
+      lva_aiy_thinking_period:
+        type: float
+        default: 1.0
+        description: Seconds per LED pulse while thinking.
+      lva_aiy_thinking_min:
+        type: float
+        default: 0.05
+        description: Minimum brightness while thinking (0.0-1.0, gamma corrected).
+      lva_aiy_thinking_max:
+        type: float
+        default: 1.0
+        description: Maximum brightness while thinking (0.0-1.0, gamma corrected).
+      lva_aiy_idle_pulse:
+        type: bool
+        default: true
+        description: Faint LED pulse while idle and not muted.
+      lva_aiy_idle_interval:
+        type: float
+        default: 10.0
+        description: Seconds between two idle pulses.
+      lva_aiy_idle_duration:
+        type: float
+        default: 2.0
+        description: Seconds per idle pulse; must not exceed lva_aiy_idle_interval.
+      lva_aiy_idle_max:
+        type: float
+        default: 0.10
+        description: Raw PWM duty cycle (0.0-1.0, no gamma correction) at the peak of the idle pulse.
+      lva_aiy_debug:
+        type: bool
+        default: false
+        description: Log every LVA event to the journal.
+      lva_aiy_user:
+        type: str
+        default: lva-aiy
+        description: System user the controller runs as; created if missing.
+      lva_aiy_gpio_group:
+        type: str
+        default: gpio
+        description: Group that grants access to the GPIO chip; must exist.
+      lva_aiy_install_dir:
+        type: str
+        default: /opt/lva-aiy-voicehat
+        description: Directory of the controller script.
+      lva_aiy_service_name:
+        type: str
+        default: lva-aiy-voicehat
+        description: Name of the systemd unit (without .service).
+      lva_aiy_packages:
+        type: list
+        elements: str
+        default: [python3-gpiozero, python3-lgpio, python3-websockets]
+        description: Distribution packages the controller needs.
+      lva_aiy_legacy_units:
+        type: list
+        elements: str
+        default: [aiy-lva-peripheral]
+        description: Units of a previous manual setup to stop, disable and remove.
+      lva_aiy_legacy_paths:
+        type: list
+        elements: str
+        default: [/opt/aiy-lva]
+        description: Paths of a previous manual setup to remove.
+      lva_aiy_remove_user:
+        type: bool
+        default: false
+        description: With lva_aiy_state absent, also remove the system user.

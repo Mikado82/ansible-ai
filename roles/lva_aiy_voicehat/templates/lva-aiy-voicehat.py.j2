@@ -1,0 +1,210 @@
+#!/usr/bin/env python3
+# {{ ansible_managed }}
+"""
+Button and LED controller for the Google AIY Voice HAT (Voice Kit v1) and
+Linux Voice Assistant (LVA), using the LVA peripheral WebSocket API.
+
+Button:
+  - starts a conversation
+  - stops a running conversation
+  - stops a ringing timer
+  - does nothing while LVA is muted
+
+LED in the button:
+  - listening:          on
+  - thinking:           clear pulse
+  - idle, not muted:    faint pulse at a fixed interval
+  - muted / no HA link: off
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import math
+import time
+
+import websockets
+from gpiozero import Button, PWMLED
+
+LVA_URI = {{ lva_aiy_lva_uri | to_json }}
+GPIO_BUTTON = {{ lva_aiy_gpio_button | int }}
+GPIO_LED = {{ lva_aiy_gpio_led | int }}
+
+# Gamma corrected brightness values (0.0-1.0)
+LISTENING_BRIGHTNESS = {{ lva_aiy_listening_brightness | float }}
+THINKING_PERIOD = {{ lva_aiy_thinking_period | float }}
+THINKING_MIN = {{ lva_aiy_thinking_min | float }}
+THINKING_MAX = {{ lva_aiy_thinking_max | float }}
+
+# Idle pulse; IDLE_MAX is the raw PWM duty cycle without gamma correction,
+# so low values stay visible.
+IDLE_PULSE = {{ lva_aiy_idle_pulse | bool }}
+IDLE_INTERVAL = {{ lva_aiy_idle_interval | float }}
+IDLE_DURATION = {{ lva_aiy_idle_duration | float }}
+IDLE_MAX = {{ lva_aiy_idle_max | float }}
+
+FRAME_TIME = 0.02  # LED update interval (50 Hz)
+LOG_LEVEL = logging.{{ 'DEBUG' if lva_aiy_debug else 'INFO' }}
+
+LISTENING_EVENTS = {"wake_word_detected", "listening"}
+ACTIVE_EVENTS = {"wake_word_detected", "listening", "thinking", "tts_speaking"}
+
+logging.basicConfig(level=LOG_LEVEL, format="%(levelname)s  %(message)s")
+log = logging.getLogger("lva-aiy-voicehat")
+
+led = PWMLED(GPIO_LED)
+button = Button(GPIO_BUTTON, pull_up=True, bounce_time=0.1)
+
+state = {
+    "assist": "idle",
+    "muted": False,
+    "buttons_disabled": False,
+    "connected": False,
+}
+
+
+def context_command() -> str | None:
+    """Return the command for a button press in the current state."""
+    if state["buttons_disabled"] or not state["connected"]:
+        return None
+    if state["assist"] == "timer_ringing":
+        return "stop_timer_ringing"
+    if state["assist"] in ACTIVE_EVENTS:
+        return "stop_pipeline"
+    if state["muted"]:
+        return None
+    return "start_listening"
+
+
+def led_mode() -> str:
+    if not state["connected"] or state["muted"]:
+        return "off"
+    if state["assist"] in LISTENING_EVENTS:
+        return "listening"
+    if state["assist"] == "thinking":
+        return "thinking"
+    return "idle"
+
+
+def perceptual(value: float) -> float:
+    """Gamma correction, so brightness ramps look even to the eye."""
+    return max(0.0, min(1.0, value)) ** 2.2
+
+
+def smooth_pulse(phase: float) -> float:
+    """Smooth pulse 0 -> 1 -> 0 for phase in [0, 1]."""
+    return 0.5 - 0.5 * math.cos(2 * math.pi * phase)
+
+
+async def animator() -> None:
+    """Drive the LED continuously according to the current state."""
+    mode_started = time.monotonic()
+    last_mode = None
+
+    while True:
+        mode = led_mode()
+        now = time.monotonic()
+        if mode != last_mode:
+            mode_started = now
+            last_mode = mode
+        t = now - mode_started
+
+        if mode == "listening":
+            duty = perceptual(LISTENING_BRIGHTNESS)
+        elif mode == "thinking":
+            phase = (t % THINKING_PERIOD) / THINKING_PERIOD
+            duty = perceptual(
+                THINKING_MIN + (THINKING_MAX - THINKING_MIN) * smooth_pulse(phase)
+            )
+        elif mode == "idle" and IDLE_PULSE:
+            # Pause first, then pulse at the end of each interval
+            cycle = t % IDLE_INTERVAL
+            start = IDLE_INTERVAL - IDLE_DURATION
+            if cycle >= start:
+                duty = IDLE_MAX * smooth_pulse((cycle - start) / IDLE_DURATION)
+            else:
+                duty = 0.0
+        else:
+            duty = 0.0
+
+        led.value = max(0.0, min(1.0, duty))
+        await asyncio.sleep(FRAME_TIME)
+
+
+async def receiver(ws) -> None:
+    async for raw in ws:
+        msg = json.loads(raw)
+        event = msg.get("event", "")
+        data = msg.get("data") or {}
+        log.debug("<- %s %s", event, data)
+
+        if event == "snapshot":
+            state["muted"] = bool(data.get("muted", False))
+            state["buttons_disabled"] = bool(data.get("button_controls_disabled", False))
+            state["connected"] = bool(data.get("ha_connected", True))
+            state["assist"] = "idle"
+        elif event == "muted":
+            state["muted"] = bool(data.get("muted", True))
+        elif event == "button_controls_disabled":
+            state["buttons_disabled"] = bool(data.get("disabled", False))
+        elif event == "disconnected":
+            state["connected"] = False
+            state["assist"] = "idle"
+        elif event == "zeroconf" and data.get("status") == "connected":
+            state["connected"] = True
+        elif event == "pipeline_error":
+            state["assist"] = "idle"
+        elif event in ACTIVE_EVENTS or event in {"idle", "tts_finished", "timer_ringing"}:
+            state["assist"] = event
+
+
+async def sender(ws, queue: asyncio.Queue) -> None:
+    while True:
+        command = await queue.get()
+        log.info("-> %s", command)
+        await ws.send(json.dumps({"command": command}))
+
+
+async def main() -> None:
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+
+    def on_press() -> None:
+        command = context_command()
+        if command:
+            loop.call_soon_threadsafe(queue.put_nowait, command)
+
+    button.when_pressed = on_press
+    animation = asyncio.create_task(animator())  # noqa: F841 (keep a reference)
+
+    while True:
+        try:
+            async with websockets.connect(LVA_URI) as ws:
+                log.info("Connected to LVA (%s)", LVA_URI)
+                # Drop commands collected while disconnected
+                while not queue.empty():
+                    queue.get_nowait()
+                tasks = [
+                    asyncio.create_task(receiver(ws)),
+                    asyncio.create_task(sender(ws, queue)),
+                ]
+                done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                for task in pending:
+                    task.cancel()
+                for task in done:
+                    if task.exception():
+                        raise task.exception()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Lost connection to LVA (%s), retrying in 3 s", exc)
+        state["connected"] = False
+        state["assist"] = "idle"
+        await asyncio.sleep(3)
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    finally:
+        led.off()

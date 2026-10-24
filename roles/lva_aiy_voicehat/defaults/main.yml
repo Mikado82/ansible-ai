@@ -1,0 +1,65 @@
+---
+# No mandatory variables: the defaults match the Google AIY Voice HAT (Voice
+# Kit v1) and a Linux Voice Assistant (LVA) running on the same host.
+
+# present: install and run the controller; absent: stop and remove it
+lva_aiy_state: present
+
+# Peripheral WebSocket API of Linux Voice Assistant
+lva_aiy_lva_uri: ws://localhost:6055
+
+# Optional systemd unit the controller starts after: the LVA unit if LVA runs
+# natively, or docker.service if LVA runs in a Docker container on this host.
+# The controller reconnects on its own anyway, this only avoids failed
+# connection attempts at boot.
+lva_aiy_lva_unit: ""
+
+# After deploying, check that the peripheral API is reachable and warn if not
+lva_aiy_check_api: true
+
+# GPIO pins (BCM numbering) of the AIY Voice HAT v1
+lva_aiy_gpio_button: 23
+lva_aiy_gpio_led: 25
+
+# LED while LVA is listening (0.0-1.0, gamma corrected)
+lva_aiy_listening_brightness: 1.0
+
+# LED pulse while Home Assistant is processing ("thinking")
+lva_aiy_thinking_period: 1.0   # seconds per pulse
+lva_aiy_thinking_min: 0.05     # 0.0-1.0, gamma corrected
+lva_aiy_thinking_max: 1.0      # 0.0-1.0, gamma corrected
+
+# Faint pulse while LVA is idle and not muted. lva_aiy_idle_max is the raw PWM
+# duty cycle (no gamma correction), so low values stay visible.
+lva_aiy_idle_pulse: true
+lva_aiy_idle_interval: 10.0    # seconds between two pulses
+lva_aiy_idle_duration: 2.0     # seconds per pulse
+lva_aiy_idle_max: 0.10         # raw PWM duty cycle 0.0-1.0
+
+# Log every LVA event (journal)
+lva_aiy_debug: false
+
+# System user the controller runs as. It is created if missing and added to
+# lva_aiy_gpio_group, which grants access to /dev/gpiochip* on Raspberry Pi OS.
+lva_aiy_user: lva-aiy
+lva_aiy_gpio_group: gpio
+
+# Install location and unit name
+lva_aiy_install_dir: /opt/lva-aiy-voicehat
+lva_aiy_service_name: lva-aiy-voicehat
+
+# Python libraries from the distribution
+lva_aiy_packages:
+  - python3-gpiozero
+  - python3-lgpio
+  - python3-websockets
+
+# Units and paths of a previous manual setup that would compete for the GPIO
+# pins. They are stopped, disabled and removed when present.
+lva_aiy_legacy_units:
+  - aiy-lva-peripheral
+lva_aiy_legacy_paths:
+  - /opt/aiy-lva
+
+# state: absent: also remove the system user
+lva_aiy_remove_user: false

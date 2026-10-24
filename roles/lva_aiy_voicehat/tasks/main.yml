@@ -1,0 +1,31 @@
+---
+- name: Validate the settings
+  ansible.builtin.assert:
+    that:
+      - lva_aiy_lva_uri is match('^wss?://[^/\s]+')
+      - lva_aiy_gpio_button in range(0, 28)
+      - lva_aiy_gpio_led in range(0, 28)
+      - lva_aiy_gpio_button != lva_aiy_gpio_led
+      - lva_aiy_listening_brightness >= 0 and lva_aiy_listening_brightness <= 1
+      - lva_aiy_thinking_min >= 0 and lva_aiy_thinking_min <= lva_aiy_thinking_max
+      - lva_aiy_thinking_max <= 1
+      - lva_aiy_thinking_period > 0
+      - lva_aiy_idle_max >= 0 and lva_aiy_idle_max <= 1
+      - lva_aiy_idle_duration > 0
+      - lva_aiy_idle_interval >= lva_aiy_idle_duration
+      - lva_aiy_service_name is match('^[A-Za-z0-9_.@-]+$')
+      - lva_aiy_install_dir is match('^/.+')
+    fail_msg: >-
+      Invalid settings. lva_aiy_lva_uri must be a ws:// URI, the GPIOs must be
+      two different BCM numbers 0-27, brightness and duty cycle values 0.0-1.0
+      (thinking min <= max), periods positive, lva_aiy_idle_duration not longer
+      than lva_aiy_idle_interval and lva_aiy_install_dir an absolute path.
+    quiet: true
+
+- name: Install and run the controller
+  ansible.builtin.include_tasks: present.yml
+  when: lva_aiy_state == 'present'
+
+- name: Remove the controller
+  ansible.builtin.include_tasks: absent.yml
+  when: lva_aiy_state == 'absent'
