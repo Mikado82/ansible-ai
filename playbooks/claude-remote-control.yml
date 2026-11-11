@@ -6,7 +6,7 @@
     - role: claude_remote_control
       vars:
         claude_rc_users:
-          # Plain user name: uses claude_rc_project_dir (default claude-remote)
+          # Plain user name: uses claude_rc_project_dir (default remote-on-<host name>)
           - deploy
           # Several project directories, each with its own service
           - name: alice

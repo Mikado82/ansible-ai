@@ -17,10 +17,11 @@ argument_specs:
           Mandatory, no default.
       claude_rc_project_dir:
         type: str
-        default: claude-remote
         description: >-
           Default working directory of an entry, relative to the user's home
           directory (a leading "~/" is accepted). Absolute paths are rejected.
+          Defaults to "remote-on-<host name>" (ansible_facts.hostname, or
+          inventory_hostname_short without facts).
       claude_rc_service_name:
         type: str
         default: claude-rc

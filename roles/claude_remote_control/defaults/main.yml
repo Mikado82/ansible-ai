@@ -7,8 +7,10 @@
 
 # Default working directory of an entry, always relative to the user's actual
 # home directory (a leading "~/" is accepted). Absolute paths and the home
-# directory itself are rejected.
-claude_rc_project_dir: claude-remote
+# directory itself are rejected. Defaults to "remote-on-<host name>", so the
+# sessions in the Claude app show which machine they run on. Falls back to the
+# short inventory name when facts are not gathered.
+claude_rc_project_dir: "remote-on-{{ ansible_facts.hostname | default(inventory_hostname_short) }}"
 
 # Prefix of the systemd user units (without .service). Each entry gets the unit
 # "<prefix>-<project dir with / replaced by ->", e.g. claude-rc-work-api.

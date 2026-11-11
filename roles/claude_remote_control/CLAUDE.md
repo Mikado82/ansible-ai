@@ -44,7 +44,11 @@ server, so it keeps running after SSH logout and across reboots.
 - **Project dir:** per entry, **always relative to the user's home** (real
   home from getent). A leading `~/` is stripped; absolute paths, empty values
   (= home itself) and `.`/`..` components are rejected in `main.yml`. The
-  absolute result is the internal fact `_claude_rc_project_dir`.
+  absolute result is the internal fact `_claude_rc_project_dir`. The default
+  `claude_rc_project_dir` is `remote-on-<ansible_facts.hostname>`, falling back
+  to `inventory_hostname_short`. Argument validation renders defaults before
+  tasks run, so defaults may only use facts with such a fallback and must not
+  reference other runtime vars.
 - **Unit names:** `<claude_rc_service_name>-<rel dir slug>` (no per-entry
   override). A legacy `claude-rc.service` whose `WorkingDirectory` matches an
   entry is stopped, disabled and deleted (`legacy.yml`).
@@ -54,8 +58,7 @@ server, so it keeps running after SSH logout and across reboots.
   (from the template) and no legacy unit is left; then `uninstall.yml` removes
   the home-dir native install and the PATH block, optionally `~/.claude*`
   (`claude_rc_remove_config`), and disables linger only if
-  `default.target.wants` is empty (other roles' services, e.g. Codex, survive). Defaults must not reference other runtime vars,
-  because argument validation renders defaults before tasks run.
+  `default.target.wants` is empty (other roles' services, e.g. Codex, survive).
 - **Binary path:** detected from `claude_rc_binary_candidates` (or forced via
   `claude_rc_binary_path`) and written **absolute** into `ExecStart`, so the
   service never depends on PATH. Separately, `claude_rc_manage_path` adds the
