@@ -57,8 +57,8 @@ ansible-playbook -i inventory.ini playbooks/claude-remote-control.yml -e '{"clau
 
 Each entry gets the unit `<claude_rc_service_name>-<project dir>`, with every
 run of characters other than letters, digits, `_`, `.` and `-` replaced by `-`
-(e.g. `work/api` → `claude-rc-work-api`, the default `claude-remote` →
-`claude-rc-claude-remote`). Two directories of one user that map to the same
+(e.g. `work/api` → `claude-rc-work-api`, the default `remote-on-myhost` →
+`claude-rc-remote-on-myhost`). Two directories of one user that map to the same
 name (e.g. `work/api` and `work-api`) are rejected.
 
 Earlier versions used a single unit `claude-rc` per user. If such a unit
@@ -66,12 +66,20 @@ exists and its `WorkingDirectory` is the project directory of an entry, the
 role stops it (with SIGINT, so the new unit resumes its sessions), disables it
 and deletes it.
 
+### Changed default project directory
+
+The default `claude_rc_project_dir` used to be `claude-remote` and is now
+`remote-on-<host name>`. On hosts set up with the old default, entries without
+`project_dir` now point to the new directory and get a second service. To keep
+the old one, set `project_dir: claude-remote` on the entry; to remove it, add an
+entry `{name: <user>, project_dir: claude-remote, state: absent}`.
+
 On the first run, log in once manually as each user (`ssh` → `claude` → `/login`), trust
 the project directory (see below), then run the role again. The sessions then
 appear at [claude.ai/code](https://claude.ai/code) and in the Claude app. Logs:
 
 ```bash
-journalctl --user -u claude-rc-claude-remote -f
+journalctl --user -u claude-rc-remote-on-$(hostname -s) -f
 ```
 
 By default only stderr reaches the journal. Without a TTY, `claude remote-control`
@@ -85,7 +93,7 @@ for debugging.
 | Variable | Default | Description |
 |---|---|---|
 | `claude_rc_users` | **mandatory, no default** | List of user names or dicts with `name`, `project_dir`, `state` (see above) |
-| `claude_rc_project_dir` | `claude-remote` | Project directory of entries without `project_dir`, always relative to the user's home directory (a leading `~/` is accepted; absolute paths are rejected) |
+| `claude_rc_project_dir` | `remote-on-<host name>` | Project directory of entries without `project_dir`, always relative to the user's home directory (a leading `~/` is accepted; absolute paths are rejected) |
 | `claude_rc_service_name` | `claude-rc` | Prefix of the unit names |
 | `claude_rc_install` | `true` | Install Claude Code if missing |
 | `claude_rc_binary_path` | `""` | Fixed path to the binary (empty = detect automatically) |
