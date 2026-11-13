@@ -1,10 +1,11 @@
 # Codex CLI Remote Control
 
 Installs the official standalone Codex CLI for existing non-root users on
-Debian/Ubuntu with systemd. Each entry (an account and a working directory) gets
-its own `codex-rc-<dir>.service` user unit, lingering, and the working directory;
-an account can have several working directories. Entries with `state: absent`
-are removed again. No Node.js dependency or inbound port is
+Debian/Ubuntu with systemd. Each entry (an account, optionally with a working
+directory) gets its own `codex-rc-<dir>.service` user unit and
+lingering, plus the directory itself for entries that have one; an account can
+have several entries. Entries without a work_dir run in the home directory.
+Entries with `state: absent` are removed again. No Node.js dependency or inbound port is
 needed by this role. Existing Codex configuration and credentials are preserved.
 Run with privilege escalation and gathered facts (Ansible >= 2.14).
 
@@ -37,25 +38,32 @@ devbox ansible_host=192.0.2.10
     - role: codex_remote_control
       vars:
         codex_rc_users:
-          - admin                   # = {name: admin}, uses codex_rc_project_dir
-          - name: admin
-            project_dir: work/api   # optional, default codex_rc_project_dir
+          - agent                   # = {name: agent}, no work_dir
+          - name: agent
+            work_dir: work/api      # optional; Codex's default path if unset
           - name: bob
-            project_dir: old
+            work_dir: old
             state: absent           # optional, present (default) or absent
 ```
 
-Each entry gets the unit `<codex_rc_service_name>-<dir>`, with every run of
-characters other than letters, digits, `_` and `-` replaced by `-` (e.g.
-`codex-rc-codex-work`, `codex-rc-work-api`). An account/directory pair may only
-appear once, and two directories of an account must not map to the same unit
-name (e.g. `work/api` and `work-api`). Earlier versions used a single
-`codex-rc.service` per account; if its `WorkingDirectory` matches an entry, the
-role stops, disables and deletes it.
+An entry with a work_dir gets the unit `<codex_rc_service_name>-<dir>`,
+with every run of characters other than letters, digits, `_` and `-` replaced by
+`-` (e.g. `codex-rc-work-api`). The service starts in that directory and passes
+it to the CLI as `codex --cd <dir> remote-control --no-daemon`, so the agent uses
+it as its working root. An entry without one
+gets the plain `<codex_rc_service_name>` unit (`codex-rc`) and runs in the home
+directory. An
+account/directory pair may only appear once, each account has at most one
+entry without a work_dir, and two directories of an account must not map
+to the same unit name (e.g. `work/api` and `work-api`). Earlier versions used
+a single `codex-rc.service` per account; if its `WorkingDirectory` matches an
+entry, or an entry without a work_dir takes over the name, the role
+stops, disables and deletes it.
 
 Run `ansible-playbook -i inventory.ini playbooks/codex-remote-control.yml` from
-the repository root. Accounts must already exist and have access to the projects
-you want Codex to work on. Remote Control runs with those users' permissions.
+the repository root. Accounts must already exist and have access to the
+directories you want Codex chats to run in. Remote Control runs with those
+users' permissions.
 
 ## First login and pairing
 
@@ -78,12 +86,12 @@ you want Codex to work on. Remote Control runs with those users' permissions.
    the systemd service before using that daemon:
 
    ```bash
-   systemctl --user stop codex-rc-codex-work
+   systemctl --user stop codex-rc-work-api
    ~/.local/bin/codex remote-control start
    ~/.local/bin/codex remote-control pair
    # Enter the short-lived code in the mobile app if offered.
    ~/.local/bin/codex remote-control stop
-   systemctl --user start codex-rc-codex-work
+   systemctl --user start codex-rc-work-api
    ```
 
    Do not run the managed daemon and the foreground service simultaneously.
@@ -94,13 +102,13 @@ you want Codex to work on. Remote Control runs with those users' permissions.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `codex_rc_users` | required | Non-empty list of account names or dicts with `name`, `project_dir`, `state`; present accounts must exist and be non-root |
-| `codex_rc_project_dir` | `codex-work` | Working directory of entries without `project_dir`, relative to the home; no spaces or dot components |
+| `codex_rc_users` | required | Non-empty list of account names or dicts with `name`, `work_dir`, `state`; present accounts must exist and be non-root |
+| `codex_rc_work_dir` | unset | Working directory of the agent (`--cd` and the unit's `WorkingDirectory`), used by entries without `work_dir`, relative to the home; no spaces or dot components. If unset, Codex uses its default path |
 | `codex_rc_service_name` | `codex-rc` | Prefix of the user unit names |
 | `codex_rc_release` | `latest` | Release passed to the official installer |
 | `codex_rc_update` | `false` | Run installer again for existing installations |
 | `codex_rc_start` | `true` | Enable/start with ChatGPT login; false disables/stops the unit |
-| `codex_rc_remove_project_dir` | `false` | `state: absent`: also delete the working directory and its contents |
+| `codex_rc_remove_work_dir` | `false` | `state: absent`: also delete the entry's work directory and its contents (no directory exists for entries without one) |
 | `codex_rc_remove_config` | `false` | `state: absent` for the account's last entry: also delete `~/.codex` (login, configuration, history) |
 
 Installation uses `https://chatgpt.com/codex/install.sh` as the account owner,
@@ -112,15 +120,15 @@ requested release and restarts the service. Return this option to false for
 normal idempotent runs. Upstream CLI auto-updates, if enabled, are independent.
 
 The role does not overwrite `config.toml`, grant project trust, or change sandbox
-or approval policies. The working directory does not restrict filesystem access.
+or approval policies. The work directory does not restrict filesystem access.
 
 ## Operations
 
 As the configured user:
 
 ```bash
-systemctl --user status codex-rc-codex-work
-journalctl --user -u codex-rc-codex-work -f
+systemctl --user status codex-rc-work-api
+journalctl --user -u codex-rc-work-api -f
 ~/.local/bin/codex login status
 ```
 
@@ -133,8 +141,8 @@ service. To disable it persistently, apply with `codex_rc_start: false`.
 
 For an entry with `state: absent`, the role stops and disables the entry's unit,
 deletes it (and a matching legacy `codex-rc.service`) and reloads the user
-manager. The working directory and its contents are kept unless
-`codex_rc_remove_project_dir: true`. Accounts that do not exist are skipped.
+manager. The work directory and its contents are kept unless
+`codex_rc_remove_work_dir: true`. Accounts that do not exist are skipped.
 
 If no unit written by this role (recognized by the line
 `# Managed by role codex_remote_control`) and no legacy `codex-rc.service` is

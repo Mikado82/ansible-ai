@@ -20,14 +20,18 @@
   ansible.builtin.set_fact:
     _codex_rc_authenticated: "{{ _codex_rc_login.rc == 0 and 'chatgpt' in ((_codex_rc_login.stdout ~ _codex_rc_login.stderr) | lower) }}"
 
-- name: Create working and unit directories
+- name: Create the unit directory
   ansible.builtin.file:
-    path: "{{ item }}"
+    path: "{{ _codex_rc_home }}/.config/systemd/user"
     state: directory
     mode: "0700"
-  loop:
-    - "{{ _codex_rc_home }}/{{ _codex_rc_entry.rel }}"
-    - "{{ _codex_rc_home }}/.config/systemd/user"
+
+- name: Create the entry's working directory
+  ansible.builtin.file:
+    path: "{{ _codex_rc_home }}/{{ _codex_rc_entry.rel }}"
+    state: directory
+    mode: "0700"
+  when: _codex_rc_entry.rel != ''
 
 - name: Write foreground Remote Control unit
   ansible.builtin.template:
@@ -80,8 +84,11 @@
     path: "/run/user/{{ _codex_rc_uid }}/bus"
   register: _codex_rc_bus
 
-- name: Remove a legacy unit that served this project directory
+# Only entries whose own unit has a different name; a plain entry's unit has
+# the legacy name itself and was just written by the template task above.
+- name: Remove a legacy unit this entry replaces
   ansible.builtin.include_tasks: legacy.yml
+  when: _codex_rc_service != codex_rc_service_name
 
 - name: Manage Remote Control service
   ansible.builtin.systemd:

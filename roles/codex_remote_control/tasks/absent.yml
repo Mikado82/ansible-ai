@@ -1,8 +1,9 @@
 ---
 # Runs once per absent entry of codex_rc_users; the entry is _codex_rc_entry.
-# Removes the unit of this project directory. The project directory itself is
-# kept unless codex_rc_remove_project_dir is set. When no other unit of this
-# role is left for the account, uninstall.yml removes Codex as well.
+# Removes the unit of this entry. The work_dir itself is kept unless
+# codex_rc_remove_work_dir is set (entries without one have no directory).
+# When no other unit of this role is left for the account, uninstall.yml
+# removes Codex as well.
 
 - name: Store the user and unit name of the entry
   ansible.builtin.set_fact:
@@ -20,7 +21,7 @@
     msg: Account "{{ _codex_rc_user }}" does not exist on {{ inventory_hostname }}; nothing to remove.
   when: (ansible_facts.getent_passwd | default({})).get(_codex_rc_user) is none
 
-- name: Remove the service for this project directory
+- name: Remove the service of this entry
   when: (ansible_facts.getent_passwd | default({})).get(_codex_rc_user) is not none
   block:
     - name: Store account details
@@ -33,8 +34,9 @@
         path: "/run/user/{{ _codex_rc_uid }}/bus"
       register: _codex_rc_bus
 
-    - name: Remove a legacy unit that served this project directory
+    - name: Remove a legacy unit this entry replaces
       ansible.builtin.include_tasks: legacy.yml
+      when: _codex_rc_service != codex_rc_service_name
 
     - name: Check whether the unit exists
       ansible.builtin.stat:
@@ -76,11 +78,11 @@
         - _codex_rc_bus.stat.exists
         - _codex_rc_unit_removed is changed
 
-    - name: Remove the project directory
+    - name: Remove the working directory
       ansible.builtin.file:
         path: "{{ _codex_rc_home }}/{{ _codex_rc_entry.rel }}"
         state: absent
-      when: codex_rc_remove_project_dir
+      when: _codex_rc_entry.rel != '' and codex_rc_remove_work_dir
 
     # Units written by this role carry a marker line (see the template). A
     # legacy unit without the marker still needs the binary as well.
