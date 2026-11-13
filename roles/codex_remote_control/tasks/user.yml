@@ -64,6 +64,8 @@
           ansible.builtin.get_url:
             url: https://chatgpt.com/codex/install.sh
             dest: "{{ _codex_rc_home }}/.cache/codex-ansible/install.sh"
+            # Updates must not reuse a cached installer or a conditional response.
+            force: true
             mode: "0600"
 
         - name: Run official installer without interactive prompts
