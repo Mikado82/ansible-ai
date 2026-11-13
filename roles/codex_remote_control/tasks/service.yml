@@ -80,8 +80,11 @@
     path: "/run/user/{{ _codex_rc_uid }}/bus"
   register: _codex_rc_bus
 
-- name: Remove a legacy unit that served this project directory
+# Only entries whose own unit has a different name; a plain entry's unit has
+# the legacy name itself and was just written by the template task above.
+- name: Remove a legacy unit this entry replaces
   ansible.builtin.include_tasks: legacy.yml
+  when: _codex_rc_service != codex_rc_service_name
 
 - name: Manage Remote Control service
   ansible.builtin.systemd:

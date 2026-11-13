@@ -33,8 +33,9 @@
         path: "/run/user/{{ _codex_rc_uid }}/bus"
       register: _codex_rc_bus
 
-    - name: Remove a legacy unit that served this project directory
+    - name: Remove a legacy unit this entry replaces
       ansible.builtin.include_tasks: legacy.yml
+      when: _codex_rc_service != codex_rc_service_name
 
     - name: Check whether the unit exists
       ansible.builtin.stat:
