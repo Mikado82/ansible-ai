@@ -36,3 +36,6 @@ argument_specs:
       codex_rc_remove_config:
         type: bool
         description: With state absent for an account's last entry, also delete ~/.codex
+      codex_rc_uninstall:
+        type: bool
+        description: With state absent for an account's last entry, uninstall the Codex CLI

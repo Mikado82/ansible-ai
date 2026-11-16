@@ -52,7 +52,7 @@
       register: _codex_rc_binary
 
     - name: Install or update native Codex CLI
-      when: codex_rc_update or not _codex_rc_binary.stat.exists
+      when: (codex_rc_update or not _codex_rc_binary.stat.exists) and _codex_rc_user not in _codex_rc_updated_users
       block:
         - name: Create private installer directory
           ansible.builtin.file:
@@ -80,6 +80,11 @@
             CODEX_INSTALL_DIR: "{{ _codex_rc_home }}/.local/bin"
           register: _codex_rc_install
           changed_when: true
+
+        - name: Record the updated account
+          ansible.builtin.set_fact:
+            _codex_rc_updated_users: "{{ _codex_rc_updated_users + [_codex_rc_user] }}"
+          when: _codex_rc_install is changed
 
     - name: Configure the Remote Control service
       ansible.builtin.include_tasks: service.yml

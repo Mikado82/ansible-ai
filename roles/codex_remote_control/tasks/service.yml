@@ -26,11 +26,17 @@
     state: directory
     mode: "0700"
 
+- name: Check the entry's working directory
+  ansible.builtin.stat:
+    path: "{{ _codex_rc_home }}/{{ _codex_rc_entry.rel }}"
+  register: _codex_rc_work_dir_stat
+  when: _codex_rc_entry.rel != ''
+
 - name: Create the entry's working directory
   ansible.builtin.file:
     path: "{{ _codex_rc_home }}/{{ _codex_rc_entry.rel }}"
     state: directory
-    mode: "0700"
+    mode: "{{ '0700' if not _codex_rc_work_dir_stat.stat.exists else omit }}"
   when: _codex_rc_entry.rel != ''
 
 - name: Write foreground Remote Control unit
@@ -47,6 +53,7 @@
   ansible.builtin.getent:
     database: shadow
     key: "{{ _codex_rc_user }}"
+  no_log: true
 
 - name: Fail if the password of the account has expired
   vars:
@@ -97,7 +104,7 @@
     daemon_reload: true
     enabled: "{{ codex_rc_start and _codex_rc_authenticated }}"
     state: >-
-      {{ ('restarted' if (_codex_rc_unit is changed or _codex_rc_install is changed) else 'started')
+      {{ ('restarted' if (_codex_rc_unit is changed or _codex_rc_user in _codex_rc_updated_users) else 'started')
          if (codex_rc_start and _codex_rc_authenticated) else 'stopped' }}
   when: not ansible_check_mode
 
@@ -107,7 +114,8 @@
       {{ _codex_rc_user }}: ChatGPT login detected={{ _codex_rc_authenticated }}.
       If missing, SSH in as this user, run ~/.local/bin/codex login --device-auth,
       and apply this role again. Service: systemctl --user status {{ _codex_rc_service }}.
-      Pairing: stop this user service, run ~/.local/bin/codex remote-control start,
+      Pairing: stop all running Remote Control user services for this account,
+      run ~/.local/bin/codex remote-control start,
       then ~/.local/bin/codex remote-control pair; enter the short-lived code in
       the mobile app if offered. Afterwards run ~/.local/bin/codex remote-control stop
-      and restart this user service. Do not run both servers simultaneously.
+      and restart the services that were running. Do not run both servers simultaneously.

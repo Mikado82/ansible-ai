@@ -2,8 +2,8 @@
 # Runs once per absent entry of codex_rc_users; the entry is _codex_rc_entry.
 # Removes the unit of this entry. The work_dir itself is kept unless
 # codex_rc_remove_work_dir is set (entries without one have no directory).
-# When no other unit of this role is left for the account, uninstall.yml
-# removes Codex as well.
+# When no other unit of this role is left, uninstall.yml handles optional
+# removal of Codex and configuration and disables unneeded lingering.
 
 - name: Store the user and unit name of the entry
   ansible.builtin.set_fact:
@@ -104,7 +104,7 @@
         path: "{{ _codex_rc_home }}/.config/systemd/user/{{ codex_rc_service_name }}.service"
       register: _codex_rc_remaining_legacy
 
-    - name: Uninstall Codex when no unit of the account is left
+    - name: Clean up when no unit of the account is left
       ansible.builtin.include_tasks: uninstall.yml
       when:
         - _codex_rc_remaining.matched | default(0) == 0
