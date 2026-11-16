@@ -1,7 +1,9 @@
 ---
-# Before units were named per project directory, every account had a single
-# unit named codex_rc_service_name. Remove it if it served this project
-# directory. Expects _codex_rc_bus (stat of the user's D-Bus socket).
+# Before units were named per working directory, every account had a single
+# unit named codex_rc_service_name. Remove it if its WorkingDirectory matches
+# this entry's directory. Included only for entries whose own unit has a
+# different name; a plain entry's unit carries the legacy name itself and is
+# managed directly. Expects _codex_rc_bus (stat of the user's D-Bus socket).
 - name: Look for a legacy unit named {{ codex_rc_service_name }}
   ansible.builtin.stat:
     path: "{{ _codex_rc_home }}/.config/systemd/user/{{ codex_rc_service_name }}.service"
@@ -13,10 +15,11 @@
   register: _codex_rc_legacy_unit
   when: _codex_rc_legacy_stat.stat.exists
 
-- name: Remove the legacy unit if it served this project directory
+- name: Remove the legacy unit if it served this working directory
   when:
     - _codex_rc_legacy_stat.stat.exists
-    - ('WorkingDirectory=' ~ _codex_rc_home ~ '/' ~ _codex_rc_entry.rel) in (_codex_rc_legacy_unit.content | b64decode).splitlines()
+    - ('WorkingDirectory=' ~ _codex_rc_home ~ '/' ~ _codex_rc_entry.rel)
+      in (_codex_rc_legacy_unit.content | b64decode).splitlines()
   block:
     - name: Stop and disable the legacy unit
       become: true

@@ -6,9 +6,9 @@
     - role: codex_remote_control
       vars:
         codex_rc_users:
-          # Plain user name: uses codex_rc_project_dir (default codex-work)
-          - admin
+          # Plain user name: no work_dir, so Codex uses its default path
+          - agent
           # Remove the service of this directory (contents are kept)
-          # - name: admin
-          #   project_dir: old-project
+          # - name: agent
+          #   work_dir: old-project
           #   state: absent

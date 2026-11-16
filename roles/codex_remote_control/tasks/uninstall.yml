@@ -11,12 +11,14 @@
     - .local/bin/codex-code-mode-host
     - .codex/packages
     - .cache/codex-ansible
+  when: codex_rc_uninstall
 
 - name: Check which shell startup files exist
   ansible.builtin.stat:
     path: "{{ _codex_rc_home }}/{{ item }}"
   loop: [.bashrc, .bash_profile, .profile, .zshrc, .zprofile]
   register: _codex_rc_profiles
+  when: codex_rc_uninstall
 
 - name: Remove the installer's PATH block
   ansible.builtin.blockinfile:
@@ -25,9 +27,10 @@
     marker_begin: ">>>"
     marker_end: "<<<"
     state: absent
-  loop: "{{ _codex_rc_profiles.results | selectattr('stat.exists') | list }}"
+  loop: "{{ _codex_rc_profiles.results | default([]) | selectattr('stat.exists') | list }}"
   loop_control:
     label: "{{ item.item }}"
+  when: codex_rc_uninstall
 
 - name: Remove the Codex login and configuration
   ansible.builtin.file:
