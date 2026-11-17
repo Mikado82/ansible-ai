@@ -1,0 +1,93 @@
+---
+- name: Validate and normalize OpenCode settings
+  ansible.builtin.import_tasks: validate.yml
+
+- name: Reconcile OpenCode accounts and services
+  become_user: root
+  environment:
+    PATH: /usr/sbin:/usr/bin:/sbin:/bin
+  vars:
+    # Use system temporary storage for Ansible modules and privilege changes.
+    ansible_remote_tmp: /tmp
+    _opencode_rc_present: "{{ _opencode_rc_accounts | selectattr('state', 'eq', 'present') | list }}"
+    _opencode_rc_absent: "{{ _opencode_rc_accounts | selectattr('state', 'eq', 'absent') | list }}"
+  block:
+    - name: Initialize account and service state for this run
+      ansible.builtin.set_fact:
+        _opencode_rc_accounts: []
+        _opencode_rc_pending_restart: []
+        _opencode_rc_revisions: {}
+
+    - name: Look up and validate managed accounts before making changes
+      ansible.builtin.include_tasks: account.yml
+      loop: "{{ _opencode_rc_entries }}"
+      loop_control:
+        loop_var: _opencode_rc_entry
+        label: "{{ _opencode_rc_entry.name }}"
+
+    - name: Install native installer and user service prerequisites
+      become: true
+      vars:
+        _native_packages: [ca-certificates, curl, tar, git, dbus-user-session]
+      ansible.builtin.package:
+        # acl also lets Ansible switch to existing accounts during removal.
+        name: "{{ ['acl'] + (_native_packages if _opencode_rc_present else []) }}"
+        state: present
+      when: _opencode_rc_accounts | length > 0
+
+    - name: Prepare OpenCode services as their account owners
+      become: true
+      become_user: "{{ _opencode_rc_entry.name }}"
+      environment:
+        HOME: "{{ _opencode_rc_entry.home }}"
+        XDG_RUNTIME_DIR: "/run/user/{{ _opencode_rc_entry.uid }}"
+      block:
+        - name: Remove services for absent accounts before reusing their ports
+          ansible.builtin.include_tasks: absent.yml
+          loop: "{{ _opencode_rc_absent }}"
+          loop_control:
+            loop_var: _opencode_rc_entry
+            label: "{{ _opencode_rc_entry.name }}"
+
+        - name: Install OpenCode and render service configuration
+          ansible.builtin.include_tasks: present.yml
+          loop: "{{ _opencode_rc_present }}"
+          loop_control:
+            loop_var: _opencode_rc_entry
+            label: "{{ _opencode_rc_entry.name }}"
+
+        - name: Stop changed services before starting any of them
+          ansible.builtin.include_tasks: stop.yml
+          loop: "{{ _opencode_rc_present }}"
+          loop_control:
+            loop_var: _opencode_rc_entry
+            label: "{{ _opencode_rc_entry.name }}"
+          when:
+            - not ansible_check_mode
+            - not opencode_rc_start or _opencode_rc_entry.name in _opencode_rc_pending_restart
+
+    - name: Enable lingering and start user managers
+      ansible.builtin.include_tasks:
+        file: manager.yml
+        apply:
+          become: true
+      loop: "{{ _opencode_rc_present }}"
+      loop_control:
+        loop_var: _opencode_rc_entry
+        label: "{{ _opencode_rc_entry.name }}"
+      when: opencode_rc_start
+
+    - name: Start and verify services as their account owners
+      become: true
+      become_user: "{{ _opencode_rc_entry.name }}"
+      environment:
+        HOME: "{{ _opencode_rc_entry.home }}"
+        XDG_RUNTIME_DIR: "/run/user/{{ _opencode_rc_entry.uid }}"
+      block:
+        - name: Enable the service and verify the authenticated API
+          ansible.builtin.include_tasks: service.yml
+          loop: "{{ _opencode_rc_present }}"
+          loop_control:
+            loop_var: _opencode_rc_entry
+            label: "{{ _opencode_rc_entry.name }}"
+          when: opencode_rc_start and not ansible_check_mode

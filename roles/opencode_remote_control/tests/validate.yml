@@ -1,0 +1,168 @@
+---
+- name: Validate OpenCode role without changing accounts or services
+  hosts: localhost
+  gather_facts: false
+  vars:
+    # Platform fixtures let validation run without requiring a systemd PID 1.
+    ansible_facts:
+      system: Linux
+      os_family: Debian
+      service_mgr: systemd
+      architecture: x86_64
+    opencode_rc_users:
+      - agent
+      - name: developer
+        port: 4097
+        work_dir: work/api
+      - name: retired
+        state: absent
+    opencode_rc_passwords:
+      agent: test-only-password
+      developer: 'test-only-"quote"-\backslash-$dollar-%percent-ü'
+    opencode_rc_environment:
+      PROVIDER_KEY: 'test-only-"quote"-\backslash-$dollar-%percent-ü'
+  tasks:
+    - name: Accept multiple accounts with distinct ports and absent entries without passwords
+      ansible.builtin.include_role:
+        name: opencode_remote_control
+        tasks_from: validate
+        public: true
+
+    - name: Check normalization
+      ansible.builtin.assert:
+        that:
+          - _opencode_rc_entries[0].port == 4096
+          - _opencode_rc_entries[0].work_dir == ''
+          - _opencode_rc_entries[1].work_dir == 'work/api'
+          - _opencode_rc_entries[2].state == 'absent'
+
+    - name: Reject invalid and unsafe configurations
+      ansible.builtin.include_tasks: reject.yml
+      loop:
+        - label: v1
+          version: 1.2.3
+        - label: future major
+          version: 3.0.0
+        - label: prerelease
+          version: 2.0.0-beta.1
+        - label: duplicate account
+          users: [agent, agent]
+        - label: duplicate port
+          users: [agent, developer]
+        - label: directory traversal
+          users: [{name: agent, work_dir: ../escape}]
+        - label: absolute directory
+          users: [{name: agent, work_dir: /tmp/project}]
+        - label: missing account name
+          users: [{port: 4096}]
+        - label: root account
+          users: [root]
+        - label: privileged port
+          users: [{name: agent, port: 80}]
+        - label: invalid port
+          users: [{name: agent, port: 4096garbage}]
+        - label: unknown entry field
+          users: [{name: agent, typo: value}]
+        - label: missing password
+          passwords: {}
+        - label: newline in password
+          passwords: {agent: "bad\npassword"}
+        - label: newline in environment
+          environment: {PROVIDER_KEY: "bad\nkey"}
+        - label: tab in password
+          passwords: {agent: "bad\tpassword"}
+        - label: managed environment override
+          environment: {OPENCODE_PASSWORD: another-password}
+        - label: hostname argument injection
+          hostname: '127.0.0.1 --remote'
+        - label: CORS argument injection
+          cors: ['https://example.com --remote']
+      loop_control:
+        loop_var: _case
+        label: "{{ _case.label }}"
+
+    - name: Exercise the full role for an absent account without a password
+      ansible.builtin.include_role:
+        name: opencode_remote_control
+      vars:
+        opencode_rc_users:
+          - name: opencode_role_test_missing_user
+            state: absent
+        opencode_rc_passwords: {}
+
+    - name: Create temporary template fixture
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: opencode-role-test-
+      register: _fixture
+
+    - name: Render and verify service templates
+      vars:
+        ansible_managed: Ansible managed
+        _opencode_rc_entry:
+          home: "{{ _fixture.path }}"
+          name: developer
+          work_dir: work/api
+          port: 4097
+        opencode_rc_cors: [https://app.example.com, 'http://localhost:3000']
+      block:
+        - name: Create fixture binary directory
+          ansible.builtin.file:
+            path: "{{ _fixture.path }}/.opencode/bin"
+            state: directory
+            mode: "0700"
+
+        - name: Provide an executable for systemd unit validation
+          ansible.builtin.file:
+            src: /usr/bin/true
+            dest: "{{ _fixture.path }}/.opencode/bin/opencode"
+            state: link
+
+        - name: Render and verify the systemd user unit
+          ansible.builtin.template:
+            src: ../templates/opencode-rc.service.j2
+            dest: "{{ _fixture.path }}/opencode-rc.service"
+            mode: "0600"
+            validate: /usr/bin/systemd-analyze --user verify %s
+
+        - name: Render private environment with special characters
+          ansible.builtin.template:
+            src: ../templates/server.env.j2
+            dest: "{{ _fixture.path }}/server.env"
+            mode: "0600"
+          no_log: true
+          diff: false
+
+        - name: Create fixture account binary directories
+          ansible.builtin.file:
+            path: "{{ _fixture.path }}/{{ item }}/.opencode/bin"
+            state: directory
+            mode: "0700"
+          loop: [agent, developer]
+
+        - name: Provide an installed OpenCode v2.0.0 version fixture
+          ansible.builtin.copy:
+            content: |
+              #!/bin/sh
+              printf '2.0.0\n'
+            dest: "{{ _fixture.path }}/{{ item }}/.opencode/bin/opencode"
+            mode: "0700"
+          loop: [agent, developer]
+
+        - name: Verify restart planning across deployments
+          ansible.builtin.include_tasks: reconcile.yml
+          loop:
+            - {label: first deployment, ports: [4096, 4097], pending: [agent, developer], apply: true}
+            - {label: unchanged deployment, ports: [4096, 4097], pending: []}
+            - {label: both sides of port swap, ports: [4097, 4096], pending: [agent, developer], apply: true}
+            - {label: interrupted rotation, ports: [4097, 4096], rotate: true, pending: [agent]}
+            - {label: retry rotation, ports: [4097, 4096], rotate: true, pending: [agent], apply: true}
+            - {label: applied rotation, ports: [4097, 4096], rotate: true, pending: []}
+          loop_control:
+            loop_var: _deployment
+            label: "{{ _deployment.label }}"
+      always:
+        - name: Remove template fixture
+          ansible.builtin.file:
+            path: "{{ _fixture.path }}"
+            state: absent

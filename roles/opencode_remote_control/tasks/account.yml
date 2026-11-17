@@ -1,0 +1,24 @@
+---
+- name: Look up account
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ _opencode_rc_entry.name }}"
+    fail_key: "{{ _opencode_rc_entry.state == 'present' }}"
+  register: _opencode_rc_passwd
+
+- name: Record an existing account
+  vars:
+    _passwd: "{{ _opencode_rc_passwd.ansible_facts.getent_passwd.get(_opencode_rc_entry.name) }}"
+  when: _passwd is not none
+  block:
+    - name: Validate account and home path
+      ansible.builtin.assert:
+        that:
+          - _passwd[1] | int > 0
+          - _passwd[4] is match('^/[A-Za-z0-9_-][A-Za-z0-9_./-]*$')
+          - _passwd[4].split('/') | intersect(['.', '..']) | length == 0
+        fail_msg: OpenCode requires a non-root account with an absolute home path without whitespace or systemd specifiers.
+
+    - name: Add the account to the deployment
+      ansible.builtin.set_fact:
+        _opencode_rc_accounts: "{{ _opencode_rc_accounts + [_opencode_rc_entry | combine({'uid': _passwd[1], 'home': _passwd[4]})] }}"

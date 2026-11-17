@@ -1,0 +1,12 @@
+---
+- name: Install OpenCode v2 and configure its remote server
+  hosts: opencode_remote_control
+  become: true
+  roles:
+    - role: opencode_remote_control
+      vars:
+        opencode_rc_users:
+          - name: agent
+            work_dir: projects
+        # Supply opencode_rc_passwords through an encrypted vars file, for example:
+        # ansible-playbook -i inventory.ini playbooks/opencode-remote-control.yml -e @opencode-vault.yml --ask-vault-pass

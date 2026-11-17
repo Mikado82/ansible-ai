@@ -1,0 +1,26 @@
+# {{ ansible_managed }}
+# Managed by role opencode_remote_control
+[Unit]
+Description=OpenCode v2 API and web server
+
+[Service]
+Type=simple
+WorkingDirectory={{ _opencode_rc_entry.home }}{{ '/' ~ _opencode_rc_entry.work_dir if _opencode_rc_entry.work_dir else '' }}
+Environment=HOME={{ _opencode_rc_entry.home }}
+Environment=PATH={{ _opencode_rc_entry.home }}/.opencode/bin:{{ _opencode_rc_entry.home }}/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=XDG_CONFIG_HOME={{ _opencode_rc_entry.home }}/.config
+Environment=XDG_DATA_HOME={{ _opencode_rc_entry.home }}/.local/share
+Environment=XDG_STATE_HOME={{ _opencode_rc_entry.home }}/.local/state
+Environment=XDG_CACHE_HOME={{ _opencode_rc_entry.home }}/.cache
+EnvironmentFile={{ _opencode_rc_entry.home }}/.config/opencode-ansible/{{ opencode_rc_service_name }}.env
+# Foreground mode lets systemd own the process and its lifecycle.
+ExecStart={{ _opencode_rc_entry.home }}/.opencode/bin/opencode serve --hostname {{ opencode_rc_hostname }} --port {{ _opencode_rc_entry.port }}{% for origin in opencode_rc_cors %} --cors {{ origin }}{% endfor %}
+
+Restart=on-failure
+RestartSec=10
+KillSignal=SIGINT
+TimeoutStopSec=30
+UMask=0077
+
+[Install]
+WantedBy=default.target

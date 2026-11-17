@@ -1,0 +1,83 @@
+---
+- name: Validate the entries of opencode_rc_users
+  ansible.builtin.assert:
+    that:
+      - opencode_rc_users | default([], true) | length > 0
+      - opencode_rc_users is sequence and opencode_rc_users is not string and opencode_rc_users is not mapping
+      - opencode_rc_users | reject('string') | reject('mapping') | list | length == 0
+      - opencode_rc_users | select('mapping') | map('dict2items') | flatten | map(attribute='key')
+        | difference(['name', 'work_dir', 'port', 'state']) | length == 0
+    fail_msg: Use a non-empty list of account names or dictionaries with name, work_dir, port and state.
+
+- name: Reset normalized OpenCode entries
+  ansible.builtin.set_fact:
+    _opencode_rc_entries: []
+
+- name: Normalize OpenCode entries
+  vars:
+    _raw: "{{ {'name': item} if item is string else item }}"
+  ansible.builtin.set_fact:
+    _opencode_rc_entries: >-
+      {{ _opencode_rc_entries + [{
+           'name': _raw.name | default(''),
+           'work_dir': _raw.work_dir | default(opencode_rc_work_dir),
+           'port': _raw.port | default(opencode_rc_port),
+           'state': _raw.state | default('present')
+         }] }}
+  loop: "{{ opencode_rc_users }}"
+
+- name: Validate platform and server settings
+  vars:
+    _names: "{{ _opencode_rc_entries | map(attribute='name') | list }}"
+    _ports: "{{ _opencode_rc_entries | selectattr('state', 'eq', 'present') | map(attribute='port') | map('int') | list }}"
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.system == 'Linux'
+      - ansible_facts.os_family == 'Debian'
+      - ansible_facts.service_mgr == 'systemd'
+      - ansible_facts.architecture in ['x86_64', 'aarch64']
+      - _names | unique | length == _names | length
+      - _ports | unique | length == _ports | length
+      - opencode_rc_service_name is match('^[A-Za-z0-9_-]+$')
+      - opencode_rc_version is match('^(latest|2[.][0-9]+[.][0-9]+)$')
+      - opencode_rc_hostname is match('^[A-Za-z0-9_.:-]+$')
+      - opencode_rc_cors | select('match', '^https?://[A-Za-z0-9_.:\[\]-]+$') | list | length == opencode_rc_cors | length
+    fail_msg: >-
+      Use Debian/Ubuntu with systemd on x86_64 or aarch64, one entry per account,
+      distinct ports for present accounts, a valid service name, a stable 2.x.y
+      version or latest, a bind address and HTTP(S) CORS origins without paths.
+
+- name: Validate each OpenCode account entry
+  ansible.builtin.assert:
+    that:
+      - item.name is string and item.name is match('^[a-z_][a-z0-9_-]*[$]?$') and item.name != 'root'
+      - item.state in ['present', 'absent']
+      - item.port | string is match('^[0-9]+$')
+      - item.port | int > 1023 and item.port | int <= 65535
+      - item.work_dir is string
+      - item.work_dir == '' or item.work_dir is match('^[A-Za-z0-9_-][A-Za-z0-9_./-]*$')
+      - item.work_dir == '' or item.work_dir.split('/') | intersect(['', '.', '..']) | length == 0
+    fail_msg: Use a non-root account, an unprivileged port, and a relative work_dir without spaces or dot components.
+  loop: "{{ _opencode_rc_entries }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Validate server passwords
+  ansible.builtin.assert:
+    that:
+      - opencode_rc_passwords.get(item.name, '') is string
+      - opencode_rc_passwords.get(item.name, '') | trim | length > 0
+      - opencode_rc_passwords.get(item.name, '') is not search('[\x00-\x1f\x7f]')
+    fail_msg: Supply a non-empty, single-line password for every present account in opencode_rc_passwords, preferably using Vault.
+  loop: "{{ _opencode_rc_entries | selectattr('state', 'eq', 'present') | list }}"
+  no_log: true
+
+- name: Validate additional server environment
+  ansible.builtin.assert:
+    that:
+      - item.key is match('^[A-Za-z_][A-Za-z0-9_]*$')
+      - item.key not in ['HOME', 'PATH', 'OPENCODE_PASSWORD', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR']
+      - item.value | string is not search('[\x00-\x1f\x7f]')
+    fail_msg: Use valid environment names and single-line values; HOME, PATH, OPENCODE_PASSWORD and XDG paths are managed by the role.
+  loop: "{{ opencode_rc_environment | dict2items }}"
+  no_log: true

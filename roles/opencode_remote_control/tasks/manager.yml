@@ -1,0 +1,10 @@
+---
+- name: Enable lingering for startup at boot without a login
+  ansible.builtin.command:
+    argv: [loginctl, enable-linger, "{{ _opencode_rc_entry.name }}"]
+    creates: "/var/lib/systemd/linger/{{ _opencode_rc_entry.name }}"
+
+- name: Start the user manager
+  ansible.builtin.systemd:
+    name: "user@{{ _opencode_rc_entry.uid }}.service"
+    state: started

@@ -1,0 +1,17 @@
+---
+# One server per existing, non-root account. Multiple accounts need distinct ports.
+opencode_rc_service_name: opencode-rc
+opencode_rc_version: latest
+opencode_rc_update: false
+opencode_rc_start: true
+opencode_rc_hostname: 127.0.0.1
+opencode_rc_port: 4096
+opencode_rc_work_dir: ''
+opencode_rc_cors: []
+# Map account names to passwords; supply through Ansible Vault.
+opencode_rc_passwords: {}
+# Optional server environment, for example provider API keys. Values must be single-line.
+opencode_rc_environment: {}
+# With state absent, remove only the installer, binary and compatibility shim.
+# Projects, provider credentials, history and lingering are always preserved.
+opencode_rc_uninstall: false
