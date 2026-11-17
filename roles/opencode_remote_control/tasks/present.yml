@@ -1,0 +1,120 @@
+---
+- name: Check native OpenCode installation
+  ansible.builtin.stat:
+    path: "{{ _opencode_rc_entry.home }}/.opencode/bin/opencode"
+  register: _opencode_rc_binary
+
+- name: Read installed OpenCode version
+  ansible.builtin.command:
+    argv: ["{{ _opencode_rc_entry.home }}/.opencode/bin/opencode", --version]
+  register: _opencode_rc_before
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: _opencode_rc_binary.stat.exists
+
+- name: Determine whether installation is needed
+  vars:
+    _installed: "{{ (_opencode_rc_before.stdout | default('') | trim).split(' ') | last | regex_replace('^v', '') }}"
+  ansible.builtin.set_fact:
+    _opencode_rc_needs_install: >-
+      {{ opencode_rc_update or not _opencode_rc_binary.stat.exists
+         or _opencode_rc_before.rc | default(1) != 0
+         or _installed is not match('^2[.][0-9]+[.][0-9]+$')
+         or (opencode_rc_version != 'latest' and _installed != opencode_rc_version) }}
+
+- name: Install the requested OpenCode v2 release
+  ansible.builtin.include_tasks: install.yml
+  when: _opencode_rc_needs_install and not ansible_check_mode
+
+- name: Report installation needed in check mode
+  ansible.builtin.debug:
+    msg: "Would install OpenCode v2 ({{ opencode_rc_version }}) for {{ _opencode_rc_entry.name }}."
+  changed_when: true
+  when: _opencode_rc_needs_install and ansible_check_mode
+
+- name: Verify installed OpenCode major version
+  ansible.builtin.command:
+    argv: ["{{ _opencode_rc_entry.home }}/.opencode/bin/opencode", --version]
+  register: _opencode_rc_version_check
+  changed_when: false
+  check_mode: false
+  failed_when: >-
+    _opencode_rc_version_check.rc != 0 or
+    ((_opencode_rc_version_check.stdout | trim).split(' ') | last | regex_replace('^v', ''))
+    is not match('^2[.][0-9]+[.][0-9]+$')
+  when: not ansible_check_mode or not _opencode_rc_needs_install
+
+- name: Verify an explicitly requested release
+  vars:
+    _actual: "{{ (_opencode_rc_version_check.stdout | trim).split(' ') | last | regex_replace('^v', '') }}"
+  ansible.builtin.assert:
+    that: _actual == opencode_rc_version
+    fail_msg: The installed OpenCode version does not match opencode_rc_version.
+  when:
+    - opencode_rc_version != 'latest'
+    - not ansible_check_mode or not _opencode_rc_needs_install
+
+- name: Create private service directories
+  ansible.builtin.file:
+    path: "{{ _opencode_rc_entry.home }}/{{ item }}"
+    state: directory
+    mode: "0700"
+  loop: [.config/systemd/user, .config/opencode-ansible]
+
+- name: Check working directory
+  ansible.builtin.stat:
+    path: "{{ _opencode_rc_entry.home }}/{{ _opencode_rc_entry.work_dir }}"
+  register: _opencode_rc_work_dir_stat
+  when: _opencode_rc_entry.work_dir != ''
+
+- name: Create working directory while preserving existing permissions
+  ansible.builtin.file:
+    path: "{{ _opencode_rc_entry.home }}/{{ _opencode_rc_entry.work_dir }}"
+    state: directory
+    mode: "{{ '0700' if not _opencode_rc_work_dir_stat.stat.exists else omit }}"
+  when: _opencode_rc_entry.work_dir != ''
+
+- name: Write private password and server environment
+  ansible.builtin.template:
+    src: server.env.j2
+    dest: "{{ _opencode_rc_entry.home }}/.config/opencode-ansible/{{ opencode_rc_service_name }}.env"
+    mode: "0600"
+  register: _opencode_rc_env
+  no_log: true
+  diff: false
+
+- name: Write foreground OpenCode service unit
+  ansible.builtin.template:
+    src: opencode-rc.service.j2
+    dest: "{{ _opencode_rc_entry.home }}/.config/systemd/user/{{ opencode_rc_service_name }}.service"
+    mode: "0644"
+  register: _opencode_rc_unit
+
+- name: Read checksums for the installed binary and applied configuration
+  ansible.builtin.stat:
+    path: "{{ _opencode_rc_entry.home }}/{{ item }}"
+    follow: true
+    checksum_algorithm: sha256
+    get_attributes: false
+    get_mime: false
+  loop:
+    - .opencode/bin/opencode
+    - ".config/opencode-ansible/{{ opencode_rc_service_name }}.applied"
+  register: _opencode_rc_checksums
+  no_log: true
+  when: opencode_rc_start and not ansible_check_mode
+
+- name: Schedule a restart if the installed configuration has not been applied
+  vars:
+    # Template results contain checksums of the desired files even when unchanged.
+    _revision: "{{ [_opencode_rc_unit.checksum, _opencode_rc_env.checksum, _opencode_rc_checksums.results[0].stat.checksum] | join(':') | hash('sha256') }}"
+    _applied_checksum: "{{ _opencode_rc_checksums.results[1].stat.checksum | default('') }}"
+    _restart_needed: >-
+      {{ _opencode_rc_needs_install or _opencode_rc_unit is changed or _opencode_rc_env is changed
+         or _applied_checksum != (_revision | hash('sha256')) }}
+  ansible.builtin.set_fact:
+    _opencode_rc_revisions: "{{ _opencode_rc_revisions | combine({_opencode_rc_entry.name: _revision}) }}"
+    _opencode_rc_pending_restart: "{{ _opencode_rc_pending_restart + ([_opencode_rc_entry.name] if _restart_needed else []) }}"
+  no_log: true
+  when: opencode_rc_start and not ansible_check_mode

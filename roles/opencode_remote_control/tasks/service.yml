@@ -1,0 +1,43 @@
+---
+- name: Manage the OpenCode user service
+  ansible.builtin.systemd:
+    name: "{{ opencode_rc_service_name }}.service"
+    scope: user
+    daemon_reload: true
+    enabled: true
+    state: started
+
+- name: Wait for the authenticated OpenCode API
+  vars:
+    _probe_host: "{{ {'0.0.0.0': '127.0.0.1', '::': '::1'}.get(opencode_rc_hostname, opencode_rc_hostname) }}"
+  ansible.builtin.uri:
+    url: "http://{{ '[' ~ _probe_host ~ ']' if ':' in _probe_host else _probe_host }}:{{ _opencode_rc_entry.port }}/api/location"
+    url_username: opencode
+    url_password: "{{ opencode_rc_passwords[_opencode_rc_entry.name] }}"
+    force_basic_auth: true
+    follow_redirects: none
+    use_proxy: false
+    status_code: 200
+  register: _opencode_rc_health
+  until: _opencode_rc_health is succeeded
+  retries: 15
+  delay: 2
+  no_log: true
+
+- name: Record the applied configuration after the authenticated check
+  ansible.builtin.copy:
+    content: "{{ _opencode_rc_revisions[_opencode_rc_entry.name] }}"
+    dest: "{{ _opencode_rc_entry.home }}/.config/opencode-ansible/{{ opencode_rc_service_name }}.applied"
+    mode: "0600"
+    follow: false
+  no_log: true
+  diff: false
+
+- name: Explain access and provider setup
+  ansible.builtin.debug:
+    msg: >-
+      {{ _opencode_rc_entry.name }}: OpenCode v2 on {{ opencode_rc_hostname }}:{{ _opencode_rc_entry.port }}.
+      Manage as this user: systemctl --user status {{ opencode_rc_service_name }}.
+      Connect with ~/.opencode/bin/opencode --server <server-url>, setting OPENCODE_PASSWORD
+      on the client. Configure a provider as this account with ~/.opencode/bin/opencode auth login.
+      Use an SSH tunnel, VPN or HTTPS reverse proxy for remote access. See the role README.

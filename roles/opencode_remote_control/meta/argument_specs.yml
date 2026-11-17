@@ -1,0 +1,46 @@
+---
+argument_specs:
+  main:
+    short_description: Install OpenCode v2 and configure a persistent remote server
+    options:
+      opencode_rc_users:
+        type: list
+        elements: raw
+        required: true
+        description: Existing account names or dictionaries with name, work_dir, port and state (present or absent); one entry per account
+      opencode_rc_service_name:
+        type: str
+        description: Name of the systemd user service
+      opencode_rc_version:
+        type: str
+        description: latest or an explicit stable 2.x.y version; other major versions are rejected
+      opencode_rc_update:
+        type: bool
+        description: Reinstall the requested version even if OpenCode v2 is already installed
+      opencode_rc_start:
+        type: bool
+        description: Enable and start the server; false stops and disables it
+      opencode_rc_hostname:
+        type: str
+        description: Listen address; defaults to localhost for SSH forwarding or a reverse proxy
+      opencode_rc_port:
+        type: int
+        description: Default listening port; override per account when running multiple servers
+      opencode_rc_work_dir:
+        type: str
+        description: Default working directory relative to the home; empty means the home itself
+      opencode_rc_cors:
+        type: list
+        elements: str
+        description: Additional browser origins allowed by the server
+      opencode_rc_passwords:
+        type: dict
+        no_log: true
+        description: Map of account names to non-empty passwords, required for present entries
+      opencode_rc_environment:
+        type: dict
+        no_log: true
+        description: Additional single-line server environment variables, such as provider API keys
+      opencode_rc_uninstall:
+        type: bool
+        description: Also remove the native binary and installer for absent accounts; preserve projects and OpenCode data

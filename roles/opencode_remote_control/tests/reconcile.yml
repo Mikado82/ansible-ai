@@ -1,0 +1,41 @@
+---
+- name: Reset reconciliation facts for this deployment
+  ansible.builtin.set_fact:
+    _opencode_rc_pending_restart: []
+    _opencode_rc_revisions: {}
+
+- name: Prepare both deployed services without running their managers
+  ansible.builtin.include_role:
+    name: opencode_remote_control
+    tasks_from: present
+  vars:
+    _opencode_rc_entry:
+      name: "{{ _account.name }}"
+      home: "{{ _fixture.path }}/{{ _account.name }}"
+      port: "{{ _account.port }}"
+      work_dir: ''
+    opencode_rc_version: 2.0.0
+    opencode_rc_passwords:
+      agent: "{{ 'rotated-test-password' if _deployment.rotate | default(false) else 'test-only-password' }}"
+      developer: test-only-password
+  loop:
+    - {name: agent, port: "{{ _deployment.ports[0] }}"}
+    - {name: developer, port: "{{ _deployment.ports[1] }}"}
+  loop_control:
+    loop_var: _account
+    label: "{{ _account.name }}"
+
+- name: Verify which services need to restart
+  ansible.builtin.assert:
+    that: _opencode_rc_pending_restart == _deployment.pending
+    fail_msg: "Unexpected restart plan for {{ _deployment.label }}"
+
+- name: Simulate recording the configuration after a successful health check
+  ansible.builtin.copy:
+    content: "{{ _opencode_rc_revisions[item] }}"
+    dest: "{{ _fixture.path }}/{{ item }}/.config/opencode-ansible/{{ opencode_rc_service_name }}.applied"
+    mode: "0600"
+  loop: "{{ _opencode_rc_pending_restart }}"
+  when: _deployment.apply | default(false)
+  no_log: true
+  diff: false

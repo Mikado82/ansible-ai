@@ -1,0 +1,44 @@
+---
+- name: Resolve the current stable CLI release
+  ansible.builtin.uri:
+    url: https://opencode.ai/update/api/latest/cli/npm
+    return_content: true
+  register: _opencode_rc_latest
+  when: opencode_rc_version == 'latest'
+
+- name: Select the installer version
+  ansible.builtin.set_fact:
+    _opencode_rc_install_version: >-
+      {{ (_opencode_rc_latest.content | from_json).version if opencode_rc_version == 'latest' else opencode_rc_version }}
+
+- name: Refuse to install another major version
+  ansible.builtin.assert:
+    that:
+      - _opencode_rc_install_version is match('^2[.][0-9]+[.][0-9]+$')
+    fail_msg: The selected release is not stable OpenCode v2. Set opencode_rc_version to an explicit 2.x.y release.
+
+- name: Create private installer directory
+  ansible.builtin.file:
+    path: "{{ _opencode_rc_entry.home }}/.cache/opencode-ansible"
+    state: directory
+    mode: "0700"
+
+- name: Download the official v2 installer
+  ansible.builtin.get_url:
+    url: https://opencode.ai/v2/install
+    dest: "{{ _opencode_rc_entry.home }}/.cache/opencode-ansible/install.sh"
+    force: true
+    mode: "0600"
+
+- name: Install native OpenCode without editing shell profiles
+  ansible.builtin.command:
+    argv:
+      - /bin/bash
+      - "{{ _opencode_rc_entry.home }}/.cache/opencode-ansible/install.sh"
+      - --version
+      - "{{ _opencode_rc_install_version }}"
+      - --no-modify-path
+  environment:
+    SHELL: /bin/bash
+    VERSION: "{{ _opencode_rc_install_version }}"
+  changed_when: true

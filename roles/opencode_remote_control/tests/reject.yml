@@ -1,0 +1,25 @@
+---
+- name: Reset rejection flag
+  ansible.builtin.set_fact:
+    _opencode_test_rejected: false
+
+- name: Check invalid settings
+  block:
+    - name: Validate a deliberately invalid configuration
+      ansible.builtin.include_tasks: ../tasks/validate.yml
+      vars:
+        opencode_rc_users: "{{ _case.users | default(['agent']) }}"
+        opencode_rc_version: "{{ _case.version | default('latest') }}"
+        opencode_rc_hostname: "{{ _case.hostname | default('127.0.0.1') }}"
+        opencode_rc_cors: "{{ _case.cors | default([]) }}"
+        opencode_rc_passwords: "{{ _case.passwords | default({'agent': 'test-only-password'}) }}"
+        opencode_rc_environment: "{{ _case.environment | default({}) }}"
+  rescue:
+    - name: Record expected rejection
+      ansible.builtin.set_fact:
+        _opencode_test_rejected: true
+
+- name: Require invalid settings to be rejected
+  ansible.builtin.assert:
+    that: _opencode_test_rejected
+    fail_msg: "Validation accepted invalid input: {{ _case.label }}"
