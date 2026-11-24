@@ -1,0 +1,43 @@
+---
+# sudo_rules_list is mandatory and has no default
+# (see meta/argument_specs.yml and the README for the entry format).
+#
+# Example:
+#
+# sudo_rules_list:
+#   - user: deploy
+#     rules:
+#       - commands:
+#           - /usr/bin/systemctl restart nginx
+#           - /usr/bin/systemctl reload nginx
+#         nopasswd: true    # no password prompt
+#       - edit_files:
+#           - /etc/nginx/nginx.conf
+#   - user: "%admins"
+#     rules:
+#       - commands: ALL     # full sudo, with password
+#   - user: olduser
+#     state: absent
+
+# Default for rules without their own "nopasswd": true writes NOPASSWD (no
+# password prompt), false writes PASSWD (the user's password is required).
+sudo_rules_nopasswd: false
+
+# Directory for the generated drop-in files. It must be included by
+# /etc/sudoers (@includedir / #includedir), which the role checks.
+sudo_rules_dir: /etc/sudoers.d
+
+# Main sudoers file, only used to check the include of sudo_rules_dir
+sudo_rules_main_file: /etc/sudoers
+
+# File name prefix of the drop-in files. Each entry gets
+# "<prefix><user>" (a group "%admins" becomes "<prefix>group-admins").
+# Must not contain "." because sudo ignores such files in an includedir.
+sudo_rules_file_prefix: 90-sudo-rules-
+
+# Remove drop-in files with the prefix above whose entry is no longer listed
+# in sudo_rules_list
+sudo_rules_purge: false
+
+# Install the sudo package if it is missing
+sudo_rules_install: true

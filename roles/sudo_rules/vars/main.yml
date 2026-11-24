@@ -1,0 +1,34 @@
+---
+# Internal variables, do not override.
+
+# Drop-in file name per entry, in the order of sudo_rules_list:
+# "%admins" -> "<prefix>group-admins", other characters than letters, digits,
+# "_" and "-" become "_" (sudo ignores files containing "." in an includedir).
+sudo_rules_file_names: >-
+  {{ sudo_rules_list
+     | map(attribute='user')
+     | map('regex_replace', '^%', 'group-')
+     | map('regex_replace', '[^A-Za-z0-9_-]', '_')
+     | map('regex_replace', '^', sudo_rules_file_prefix)
+     | list }}
+
+# Pairs of [entry, file name]
+sudo_rules_entries: "{{ sudo_rules_list | zip(sudo_rules_file_names) | list }}"
+
+# File names of all entries that are present
+sudo_rules_present_files: >-
+  {{ sudo_rules_entries
+     | rejectattr('0.state', 'defined')
+     | map(attribute='1') | list
+   + sudo_rules_entries
+     | selectattr('0.state', 'defined')
+     | selectattr('0.state', 'equalto', 'present')
+     | map(attribute='1') | list }}
+
+# Validation patterns (single-quoted YAML, backslashes are literal)
+sudo_rules_user_regex: '^%?[A-Za-z0-9_][A-Za-z0-9_.-]*\Z'
+sudo_rules_prefix_regex: '^[A-Za-z0-9_-]+\Z'
+sudo_rules_command_regex: '^(ALL|/[^\s]+( [^\r\n]*)?)\Z'
+sudo_rules_file_regex: '^/[^\s]+\Z'
+sudo_rules_runas_regex: '^[A-Za-z0-9_.%#!+-]+(, *[A-Za-z0-9_.%#!+-]+)*\Z'
+sudo_rules_line_regex: '^[^\r\n]+\Z'

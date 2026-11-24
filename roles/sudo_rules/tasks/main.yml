@@ -1,0 +1,126 @@
+---
+- name: Validate the file prefix and the users
+  ansible.builtin.assert:
+    that:
+      - sudo_rules_file_prefix is match(sudo_rules_prefix_regex)
+      - invalid_users | length == 0
+      - sudo_rules_file_names | unique | length == sudo_rules_file_names | length
+    fail_msg: >-
+      sudo_rules_file_prefix must be non-empty and only contain letters,
+      digits, "_" and "-" (got "{{ sudo_rules_file_prefix }}").
+      Each "user" must be a user name or "%<group>" (invalid: {{ invalid_users }}).
+      Users must be unique after mapping them to file names
+      (file names: {{ sudo_rules_file_names }}).
+    quiet: true
+  vars:
+    invalid_users: >-
+      {{ sudo_rules_list | map(attribute='user')
+         | reject('match', sudo_rules_user_regex) | list }}
+
+- name: Validate the entries
+  ansible.builtin.assert:
+    that:
+      - (item.0.state | default('present')) == 'absent' or (item.0.rules | default([], true) | length > 0)
+      - item.0.defaults | default([], true) | reject('match', sudo_rules_line_regex) | list | length == 0
+    fail_msg: >-
+      Entry "{{ item.0.user }}": entries with state present need at least one
+      rule, and every "defaults" option must be a single non-empty line.
+    quiet: true
+  loop: "{{ sudo_rules_entries }}"
+  loop_control:
+    label: "{{ item.0.user }}"
+
+- name: Validate the rules
+  ansible.builtin.assert:
+    that:
+      - (commands + edit_files) | length > 0
+      - commands | reject('match', sudo_rules_command_regex) | list | length == 0
+      - edit_files | reject('match', sudo_rules_file_regex) | list | length == 0
+      - (item.1.run_as | default('root')) is match(sudo_rules_runas_regex)
+      - item.1.run_as_group is not defined or item.1.run_as_group is match(sudo_rules_runas_regex)
+      - (item.1.hosts | default('ALL')) is match(sudo_rules_runas_regex)
+    fail_msg: >-
+      Entry "{{ item.0.user }}": every rule needs "commands" and/or "edit_files".
+      Commands must be "ALL" or start with an absolute path, edit_files must be
+      absolute paths without whitespace, all of them on a single line.
+      run_as, run_as_group and hosts must be plain sudoers names or lists
+      (e.g. "root", "ALL", "www-data").
+    quiet: true
+  vars:
+    commands: "{{ [item.1.commands | default([], true)] | flatten }}"
+    edit_files: "{{ item.1.edit_files | default([], true) }}"
+  loop: >-
+    {{ sudo_rules_list | subelements('rules', skip_missing=true) }}
+  loop_control:
+    label: "{{ item.0.user }}"
+
+- name: Install sudo
+  ansible.builtin.package:
+    name: sudo
+    state: present
+  when: sudo_rules_install
+
+- name: Read the main sudoers file
+  ansible.builtin.slurp:
+    src: "{{ sudo_rules_main_file }}"
+  register: sudo_rules_main_content
+
+- name: Check that the main sudoers file includes the drop-in directory
+  ansible.builtin.assert:
+    that:
+      - >-
+        sudo_rules_main_content.content | b64decode
+        is search('^[@#]includedir\s+' ~ (sudo_rules_dir | regex_escape) ~ '/?\s*$', multiline=true)
+    fail_msg: >-
+      {{ sudo_rules_main_file }} does not include {{ sudo_rules_dir }}.
+      Add the line "@includedir {{ sudo_rules_dir }}" (with visudo) first.
+    quiet: true
+
+- name: Create the drop-in directory
+  ansible.builtin.file:
+    path: "{{ sudo_rules_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Write the drop-in files
+  ansible.builtin.template:
+    src: sudoers.j2
+    dest: "{{ sudo_rules_dir }}/{{ item.1 }}"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s
+  loop: "{{ sudo_rules_entries }}"
+  loop_control:
+    label: "{{ item.0.user }}"
+  when: item.1 in sudo_rules_present_files
+
+- name: Remove the drop-in files of absent entries
+  ansible.builtin.file:
+    path: "{{ sudo_rules_dir }}/{{ item.1 }}"
+    state: absent
+  loop: "{{ sudo_rules_entries }}"
+  loop_control:
+    label: "{{ item.0.user }}"
+  when: item.1 not in sudo_rules_present_files
+
+- name: Remove drop-in files that are no longer listed
+  when: sudo_rules_purge
+  block:
+    - name: Find existing drop-in files with the prefix
+      ansible.builtin.find:
+        paths: "{{ sudo_rules_dir }}"
+        patterns: "{{ sudo_rules_file_prefix }}*"
+        file_type: file
+      register: sudo_rules_existing
+
+    - name: Remove unlisted drop-in files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: >-
+        {{ sudo_rules_existing.files | map(attribute='path')
+           | reject('in', sudo_rules_present_files | map('regex_replace', '^', sudo_rules_dir ~ '/') | list)
+           | list }}

@@ -26,3 +26,5 @@ Collection of Ansible roles and playbooks created with AI.
   Voice Assistant via its peripheral WebSocket API. See its own `CLAUDE.md`.
 - `roles/raspotify_homeassistant_hook` – forwards raspotify/librespot player
   events to a Home Assistant webhook. See its own `CLAUDE.md`.
+- `roles/sudo_rules` – sudo rights (with or without password) per user or
+  group via drop-in files in `/etc/sudoers.d`. See its own `CLAUDE.md`.
