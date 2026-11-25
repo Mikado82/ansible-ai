@@ -1,0 +1,36 @@
+---
+- name: Grant sudo rights per user or group
+  hosts: all
+  become: true
+  roles:
+    - role: sudo_rules
+      vars:
+        sudo_rules_list:
+          # Restart/reload nginx without password, edit its config and
+          # update packages with password (sudo_rules_nopasswd: false)
+          - user: deploy
+            comment: Deployment user, may only manage nginx
+            rules:
+              - commands:
+                  - /usr/bin/systemctl restart nginx
+                  - /usr/bin/systemctl reload nginx
+                nopasswd: true
+              - edit_files:
+                  - /etc/nginx/nginx.conf
+                  - /etc/nginx/sites-available/default
+              - commands: /usr/bin/apt
+          # Run psql as postgres without password (e.g. for unattended backups)
+          - user: backup
+            rules:
+              - commands: /usr/bin/psql
+                run_as: postgres
+                nopasswd: true
+          # Full sudo for a group, with password
+          - user: "%admins"
+            rules:
+              - commands: ALL
+                run_as: ALL
+                run_as_group: ALL
+          # Remove the drop-in file of a former user
+          - user: olduser
+            state: absent

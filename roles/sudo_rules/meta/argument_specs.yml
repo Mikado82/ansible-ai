@@ -1,0 +1,103 @@
+---
+# Role argument validation (Ansible >= 2.11). Runs automatically before the
+# role's tasks and fails early if a mandatory variable is missing, a value has
+# the wrong type or an entry contains an unknown key.
+argument_specs:
+  main:
+    short_description: Grant sudo rights per user or group, with or without password, limited to specific commands or files
+    options:
+      sudo_rules_list:
+        type: list
+        elements: dict
+        required: true
+        description: >-
+          Users or groups that get sudo rights. Each entry is
+          written to its own file in sudo_rules_dir. Mandatory, no default.
+        options:
+          user:
+            type: str
+            required: true
+            description: User name, or a group name prefixed with "%" (e.g. "%admins").
+          state:
+            type: str
+            choices: [present, absent]
+            default: present
+            description: absent removes the entry's drop-in file.
+          comment:
+            type: str
+            description: Optional comment written to the top of the drop-in file.
+          defaults:
+            type: list
+            elements: str
+            default: []
+            description: >-
+              sudo Defaults that only apply to this user/group, written as
+              "Defaults:<user> <option>", e.g. "!requiretty" or "env_keep += HOME".
+          rules:
+            type: list
+            elements: dict
+            description: >-
+              Rules for this user/group, each one becomes one sudoers line.
+              Mandatory when state is present.
+            options:
+              commands:
+                type: raw
+                description: >-
+                  "ALL", or a list of commands with absolute path and optional
+                  arguments. Without arguments, any arguments are allowed;
+                  with arguments, only exactly these.
+              edit_files:
+                type: list
+                elements: str
+                default: []
+                description: >-
+                  Absolute file paths the user may edit with "sudoedit"
+                  (sudo -e), without getting a root shell in an editor.
+              run_as:
+                type: str
+                default: root
+                description: User the commands run as ("ALL" for any user).
+              run_as_group:
+                type: str
+                description: Optional group the commands may run as ("ALL" for any group).
+              hosts:
+                type: str
+                default: ALL
+                description: Host list of the rule (only relevant for shared sudoers files).
+              nopasswd:
+                type: bool
+                description: >-
+                  true: no password prompt (NOPASSWD), false: the user's
+                  password is required (PASSWD). Defaults to sudo_rules_nopasswd.
+              noexec:
+                type: bool
+                default: false
+                description: Add the NOEXEC tag (commands cannot start further programs).
+              setenv:
+                type: bool
+                default: false
+                description: Add the SETENV tag (the user may pass environment variables).
+      sudo_rules_nopasswd:
+        type: bool
+        default: false
+        description: Default of "nopasswd" for rules that do not set it.
+      sudo_rules_dir:
+        type: str
+        default: /etc/sudoers.d
+        description: Directory for the drop-in files; must be included by sudo_rules_main_file.
+      sudo_rules_main_file:
+        type: str
+        default: /etc/sudoers
+        description: Main sudoers file, checked for an include of sudo_rules_dir.
+      sudo_rules_file_prefix:
+        type: str
+        default: 90-sudo-rules-
+        description: File name prefix of the drop-in files (must not contain ".").
+      sudo_rules_purge:
+        type: bool
+        default: false
+        description: Remove drop-in files with the prefix whose entry is no longer listed.
+      sudo_rules_install:
+        type: bool
+        default: true
+        description: Install the sudo package if it is missing.

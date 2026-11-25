@@ -1,0 +1,24 @@
+{#- Escape the characters that are special in sudoers command arguments -#}
+{%- macro esc(s) -%}{{ s | regex_replace('([\\\\,:=])', '\\\\\\1') }}{%- endmacro -%}
+{%- set entry = item.0 -%}
+# {{ ansible_managed }}
+# sudo rights for {{ entry.user }}
+{% for line in (entry.comment | default('', true)).splitlines() %}
+# {{ line }}
+{% endfor %}
+{% for option in entry.defaults | default([], true) %}
+Defaults:{{ entry.user }} {{ option }}
+{% endfor %}
+{% for rule in entry.rules %}
+{%   set commands = [rule.commands | default([], true)] | flatten %}
+{%   set specs = [] %}
+{%   for cmd in commands %}
+{%     set _ = specs.append('ALL' if cmd == 'ALL' else esc(cmd)) %}
+{%   endfor %}
+{%   for path in rule.edit_files | default([], true) %}
+{%     set _ = specs.append('sudoedit ' ~ esc(path)) %}
+{%   endfor %}
+{%   set run_as = rule.run_as | default('root') ~ ((':' ~ rule.run_as_group) if rule.run_as_group is defined else '') %}
+{%   set tags = [('NOPASSWD' if rule.nopasswd | default(sudo_rules_nopasswd) | bool else 'PASSWD')] + (['NOEXEC'] if rule.noexec | default(false) | bool else []) + (['SETENV'] if rule.setenv | default(false) | bool else []) %}
+{{ entry.user }} {{ rule.hosts | default('ALL') }}=({{ run_as }}) {{ tags | join(':') }}: {{ specs | join(', \\\n    ') }}
+{% endfor %}
